@@ -104,6 +104,11 @@ These are truths this workspace already paid for. Do not relearn them.
 - **Shared libraries are consumed by `add_subdirectory`, never packaged.**
   `archive_engine`, `app_shell`, `vk_canvas` are all pinned submodules. A change
   to one is pushed there first, then the pin advanced here.
+- **The CLI command layer is separate from `main()`.** `cli/src/commands.cc`
+  holds exactly one function per verb and a single `runCommand`; `main()` only
+  builds the arg vector and calls it. That is what lets `cli/tests/e2e_test.cc`
+  drive the REAL parse→dispatch→core path against a temp database — a
+  parsing-only test cannot catch a verb that stopped reaching core.
 - **Migrations are additive and refused in the wrong direction.** The schema
   version lives in `meta.schema_version` and is checked on every open. Steps run
   upward only, in order. A database written by a *newer* build is **refused**

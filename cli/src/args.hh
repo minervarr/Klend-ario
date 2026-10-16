@@ -31,6 +31,8 @@ struct Args {
     int importance = 50;
     int urgency = 50;
     int alarmOffset = 0;
+    bool hidden = false;
+    std::string notes;
 
     // list
     std::string from; // ISO-8601 text, verbatim (empty => now)

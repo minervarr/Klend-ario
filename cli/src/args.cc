@@ -133,6 +133,12 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!takeInt(a.alarmOffset, "--alarm-offset")) {
                 return a;
             }
+        } else if (token == "--notes") {
+            if (!takeValue(a.notes, "--notes")) {
+                return a;
+            }
+        } else if (token == "--hidden") {
+            a.hidden = true;
         } else if (token == "-h" || token == "--help") {
             a.verb = Verb::Help;
         } else if (isOption(token)) {
@@ -176,6 +182,8 @@ std::string usage() {
            "  --importance N     0..100, hue (default 50)\n"
            "  --urgency N        0..100, border (default 50)\n"
            "  --alarm-offset N   seconds before start (default 0)\n"
+           "  --notes TEXT       a free-form note\n"
+           "  --hidden           hide it in the weekly view (sleep blocks)\n"
            "\n"
            "list options:\n"
            "  --from ISO         lower bound (default: now)\n"

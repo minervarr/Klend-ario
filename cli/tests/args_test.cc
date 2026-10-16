@@ -37,7 +37,8 @@ void testUnknownCommand() {
 void testAddOptions() {
     const Args a = parse({"add", "--title", "Standup", "--start", "2026-10-16T09:00:00Z",
                           "--end", "2026-10-16T09:30:00Z", "--importance", "80", "--urgency",
-                          "10", "--type", "sleep", "--alarm-offset", "-600", "--json"});
+                          "10", "--type", "sleep", "--alarm-offset", "-600", "--notes", "daily",
+                          "--hidden", "--json"});
     assert(a.error.empty());
     assert(a.verb == Verb::Add);
     assert(a.title == "Standup");
@@ -47,6 +48,8 @@ void testAddOptions() {
     assert(a.urgency == 10);
     assert(a.type == "sleep");
     assert(a.alarmOffset == -600);
+    assert(a.notes == "daily");
+    assert(a.hidden);
     assert(a.json);
 }
 
@@ -56,6 +59,8 @@ void testDefaults() {
     assert(a.urgency == 50);
     assert(a.type == "event");
     assert(a.alarmOffset == 0);
+    assert(a.notes.empty());
+    assert(!a.hidden);
     assert(!a.json);
     assert(a.dbPath.empty());
 }

@@ -11,7 +11,7 @@ as work lands; this file is the tracker.*
 |---|---|---|
 | **0** | **Scaffold** — submodule, CMake+Ninja, pyz tool, docs, first test | **done** |
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
-| 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | not started |
+| 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | not started |
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | not started |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | not started |
@@ -95,6 +95,15 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 2 complete (MVP reached).** The CLI's command layer moved out of
+  `main()` into `cli/src/commands.{hh,cc}` so it can be driven directly by a
+  test; `main()` is now `argv -> parseArgs -> runCommand`. `add` gained
+  `--notes` and `--hidden`. A new `cli/tests/e2e_test.cc` exercises all four
+  verbs against a temporary database, through the real parse→dispatch→core
+  path, and asserts `kExitOk`/`kExitError`/`kExitUsage`. (`edit`/update is
+  still not a CLI verb; `Db::updateEvent` exists and is covered by
+  `schema_test` — it gets its user-facing path in Phase 5's MCP surface.)
 
 - **Phase 1 complete.** `core/` now carries the whole model: `updateEvent`
   (bumps `updated_utc`, preserves `created_utc`, errors on a stale id), the
