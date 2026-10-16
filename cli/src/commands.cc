@@ -5,11 +5,14 @@
 #include "commands.hh"
 
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 
 #include "arc/fs/paths.hh"
 #include "klend_ario/db.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/sync.hh"
 
 namespace klend_ario::cli {
 namespace {
@@ -95,13 +98,53 @@ void printEventJson(const Event &e) {
                 jsonEscape(e.notes).c_str());
 }
 
+// The passphrase, from --key-file (first line) or $KLEND_ARIO_KEY. An explicit
+// file wins over the environment. Empty means "no encryption" — see openDb.
+std::string resolvePassphrase(const Args &args, std::string &error) {
+    if (!args.keyFile.empty()) {
+        std::ifstream in(args.keyFile, std::ios::binary);
+        std::string line;
+        if (!std::getline(in, line)) {
+            error = "cannot read key file: " + args.keyFile;
+            return {};
+        }
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back(); // tolerate a file saved on Windows
+        }
+        return line;
+    }
+    if (const char *env = std::getenv("KLEND_ARIO_KEY"); env != nullptr) {
+        return env;
+    }
+    return {};
+}
+
 int openDb(const Args &args, Db &out) {
     const std::string path = args.dbPath.empty() ? defaultDbPath() : args.dbPath;
-    auto opened = Db::open(path);
+
+    std::string keyError;
+    const std::string passphrase = resolvePassphrase(args, keyError);
+    if (!keyError.empty()) {
+        return usageError(keyError);
+    }
+
+    auto opened = passphrase.empty() ? Db::open(path) : Db::openEncrypted(path, passphrase);
     if (!opened) {
+        if (passphrase.empty()) {
+            std::fprintf(stderr, "error: %s\n", opened.error().message.c_str());
+            std::fprintf(stderr, "       (if the database is encrypted, pass --key-file <path> "
+                                 "or set $KLEND_ARIO_KEY)\n");
+            return kExitError;
+        }
         return reportError(opened.error());
     }
     out = opened.take();
+
+    // The sync policy is to DETECT conflict copies, never merge (MEMORY.md §7).
+    // Say so on every open, so a conflict cannot sit there unnoticed.
+    for (const std::string &conflict : klend_ario::syncConflictCopies(path)) {
+        std::fprintf(stderr, "warning: Syncthing conflict copy present: %s\n", conflict.c_str());
+    }
     return kExitOk;
 }
 

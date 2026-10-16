@@ -19,17 +19,18 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 add_library(klend_ario_core STATIC
     src/db.cc
     src/schema.cc
-    src/event.cc)
+    src/event.cc
+    src/sync.cc)
 
 target_include_directories(klend_ario_core
     PUBLIC  include
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # arc_fs is PUBLIC: db.hh uses arc::Result, and callers of core naturally see
-# the same storage vocabulary. sqlite3 is PRIVATE — it is an implementation
+# the same storage vocabulary. sqlite3mc is PRIVATE — it is an implementation
 # detail behind the Db boundary.
 target_link_libraries(klend_ario_core
     PUBLIC  arc_fs
-    PRIVATE sqlite3)
+    PRIVATE sqlite3mc)
 
 if(MSVC)
     target_compile_options(klend_ario_core PRIVATE /W3 /utf-8)
@@ -53,4 +54,11 @@ klend_ario_add_test(event_test
 klend_ario_add_test(schema_test
     SOURCES  tests/schema_test.cc src/db.cc src/schema.cc src/event.cc
     INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
-    LIBS     sqlite3 arc_util)
+    LIBS     sqlite3mc arc_util)
+
+# sync_test — the pure half of the Syncthing conflict policy. Links sync.cc and
+# arc_fs (for the directory listing) and opens nothing.
+klend_ario_add_test(sync_test
+    SOURCES  tests/sync_test.cc src/sync.cc
+    INCLUDES include
+    LIBS     arc_fs)

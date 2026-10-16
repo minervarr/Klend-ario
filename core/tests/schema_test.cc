@@ -1,6 +1,9 @@
 #undef NDEBUG
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <string>
 
 #include "klend_ario/db.hh"
@@ -171,6 +174,63 @@ void testNewerSchemaIsRefused() {
     std::remove(path);
 }
 
+void testModifiedMarker() {
+    auto db = Db::openMemory();
+    assert(db.ok());
+    assert(db.value().getMeta("modified_utc").value().empty()); // nothing written yet
+    assert(db.value().insertEvent(makeEvent("a", 1, 2)).ok());
+    const std::string after = db.value().getMeta("modified_utc").value();
+    assert(!after.empty());
+    assert(std::strtoll(after.c_str(), nullptr, 10) > 0);
+}
+
+void testEncryptionRoundTrip() {
+    const char *path = "klend_crypto_test.db";
+    std::remove(path);
+    const std::string key = "correct horse battery staple";
+    {
+        auto db = Db::openEncrypted(path, key);
+        assert(db.ok());
+        assert(db.value().insertEvent(makeEvent("secret", 100, 200)).ok());
+    }
+    {
+        auto db = Db::openEncrypted(path, key);
+        assert(db.ok());
+        auto all = db.value().listEvents(0, 1000);
+        assert(all.ok());
+        assert(all.value().size() == 1);
+        assert(all.value()[0].title == "secret");
+    }
+    // A wrong key is refused at open, rather than looking like an empty calendar.
+    assert(!Db::openEncrypted(path, "wrong key").ok());
+    // A plain open of an encrypted file also fails.
+    assert(!Db::open(path).ok());
+    // An empty passphrase is a caller bug, not "no encryption".
+    assert(!Db::openEncrypted(path, "").ok());
+    std::remove(path);
+}
+
+void testEncryptedFileIsNotPlaintext() {
+    const char *path = "klend_crypto_header_test.db";
+    std::remove(path);
+    {
+        auto db = Db::openEncrypted(path, "pw");
+        assert(db.ok());
+        assert(db.value().insertEvent(makeEvent("x", 1, 2)).ok());
+    }
+    // An unencrypted SQLite file starts with "SQLite format 3\0"; an encrypted
+    // one must not, or the encryption is not actually happening.
+    std::ifstream in(path, std::ios::binary);
+    assert(in.good());
+    char header[16] = {0};
+    in.read(header, sizeof(header));
+    assert(in.gcount() == 16);
+    static const char kSqliteMagic[16] = "SQLite format 3"; // + implicit NUL
+    assert(std::memcmp(header, kSqliteMagic, 16) != 0);
+    in.close();
+    std::remove(path);
+}
+
 } // namespace
 
 int main() {
@@ -184,6 +244,9 @@ int main() {
     testMeta();
     testSchemaVersionIsRecorded();
     testNewerSchemaIsRefused();
+    testModifiedMarker();
+    testEncryptionRoundTrip();
+    testEncryptedFileIsNotPlaintext();
     std::printf("schema_test: all assertions passed\n");
     return 0;
 }

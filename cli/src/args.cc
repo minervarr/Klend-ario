@@ -97,6 +97,10 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!takeValue(a.dbPath, "--db")) {
                 return a;
             }
+        } else if (token == "--key-file") {
+            if (!takeValue(a.keyFile, "--key-file")) {
+                return a;
+            }
         } else if (token == "--title") {
             if (!takeValue(a.title, "--title")) {
                 return a;
@@ -191,6 +195,8 @@ std::string usage() {
            "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"
+           "  --key-file PATH    read the database passphrase from this file\n"
+           "                     (else $KLEND_ARIO_KEY; else plaintext)\n"
            "  --json             machine-readable output\n"
            "  -h, --help         this text\n";
 }

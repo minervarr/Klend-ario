@@ -1,6 +1,8 @@
 #undef NDEBUG
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -21,6 +23,15 @@ int run(std::vector<std::string_view> tokens) { return runCommand(parseArgs(toke
 // end-to-end check from essentialAgent/TESTING.md. It would fail if a verb
 // stopped reaching core, which parsing-only tests cannot catch.
 int main() {
+    // The CLI reads $KLEND_ARIO_KEY; clear it so these tests exercise the
+    // plaintext path and the explicit --key-file path, not whatever the
+    // developer's shell happens to have set.
+#ifdef _WIN32
+    _putenv_s("KLEND_ARIO_KEY", "");
+#else
+    unsetenv("KLEND_ARIO_KEY");
+#endif
+
     const char *dbPath = "klend_e2e_test.db";
     std::remove(dbPath);
 
@@ -73,6 +84,30 @@ int main() {
     assert(run({"--help"}) == kExitOk);
 
     std::remove(dbPath);
+
+    // ---------------------------------------------------------------------
+    // An encrypted database, through the CLI, via --key-file.
+    // ---------------------------------------------------------------------
+    const char *cryptoDb = "klend_e2e_crypto.db";
+    const char *keyFile = "klend_e2e_key.txt";
+    std::remove(cryptoDb);
+    {
+        std::ofstream out(keyFile);
+        out << "s3cret\n";
+    }
+    assert(run({"add", "--db", cryptoDb, "--key-file", keyFile, "--title", "Locked", "--start",
+                "2026-10-16T09:00:00Z", "--end", "2026-10-16T10:00:00Z"}) == kExitOk);
+    // Reading it back with the key works...
+    assert(run({"list", "--db", cryptoDb, "--key-file", keyFile, "--from",
+                "2026-10-16T00:00:00Z", "--to", "2026-10-17T00:00:00Z"}) == kExitOk);
+    // ...and without a key it fails, because the file is genuinely encrypted.
+    assert(run({"list", "--db", cryptoDb, "--from", "2026-10-16T00:00:00Z", "--to",
+                "2026-10-17T00:00:00Z"}) == kExitError);
+    // A key file that does not exist is a usage error.
+    assert(run({"list", "--db", cryptoDb, "--key-file", "no_such_key.txt"}) == kExitUsage);
+    std::remove(cryptoDb);
+    std::remove(keyFile);
+
     std::printf("e2e_test: all assertions passed\n");
     return 0;
 }

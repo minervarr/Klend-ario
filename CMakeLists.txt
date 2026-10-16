@@ -34,18 +34,20 @@ set(ARC_BUILD_FS_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory(libs/firstparty/archive_engine/core archive_engine_build)
 
 # ---------------------------------------------------------------------------
-# sqlite3 — vendored amalgamation (libs/thirdparty/sqlite3).
+# sqlite3mc — SQLite3MultipleCiphers amalgamation (libs/thirdparty/sqlite3mc).
 #
-# Vendored rather than found on the system so the same version builds on
-# Linux and Android with no package to install. sqlite3.c is C and is the one
-# place a warning is expected from someone else's code, hence -w.
+# The storage engine, and the Phase 3 page-level encryption. Vendored rather
+# than found on the system so Linux and Android build the same version with no
+# package to install. It embeds SQLite itself; sqlite3mc_amalgamation.h is the
+# only header a consumer includes. It is C, and the one place a warning is
+# expected from someone else's code, hence -w.
 # ---------------------------------------------------------------------------
-add_library(sqlite3 STATIC libs/thirdparty/sqlite3/sqlite3.c)
-target_include_directories(sqlite3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs/thirdparty/sqlite3)
+add_library(sqlite3mc STATIC libs/thirdparty/sqlite3mc/sqlite3mc_amalgamation.c)
+target_include_directories(sqlite3mc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs/thirdparty/sqlite3mc)
 if(MSVC)
-    target_compile_options(sqlite3 PRIVATE /W0)
+    target_compile_options(sqlite3mc PRIVATE /W0)
 else()
-    target_compile_options(sqlite3 PRIVATE -w)
+    target_compile_options(sqlite3mc PRIVATE -w)
 endif()
 
 # ---------------------------------------------------------------------------

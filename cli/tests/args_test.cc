@@ -75,6 +75,14 @@ void testDbAndRangeFlags() {
     assert(a.to == "2026-01-08T00:00:00Z");
 }
 
+void testKeyFileFlag() {
+    const Args a = parse({"list", "--key-file", "/tmp/secret.key"});
+    assert(a.error.empty());
+    assert(a.keyFile == "/tmp/secret.key");
+    // The flag needs a value.
+    assert(!parse({"list", "--key-file"}).error.empty());
+}
+
 void testPositionalId() {
     const Args show = parse({"show", "42"});
     assert(show.error.empty());
@@ -107,6 +115,7 @@ int main() {
     testAddOptions();
     testDefaults();
     testDbAndRangeFlags();
+    testKeyFileFlag();
     testPositionalId();
     testUsageErrors();
     std::printf("args_test: all assertions passed\n");

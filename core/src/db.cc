@@ -2,7 +2,7 @@
 
 #include "klend_ario/schema.hh"
 
-#include <sqlite3.h>
+#include "sqlite3mc_amalgamation.h" // SQLite + SQLite3MultipleCiphers, one header
 
 #include <cstdio>
 #include <cstdlib>
@@ -143,7 +143,19 @@ Db &Db::operator=(Db &&other) noexcept {
     return *this;
 }
 
-arc::Result<Db> Db::open(const std::string &path) {
+arc::Result<Db> Db::open(const std::string &path) { return openInternal(path, nullptr); }
+
+arc::Result<Db> Db::openEncrypted(const std::string &path, const std::string &passphrase) {
+    if (passphrase.empty()) {
+        // Refuse rather than fall back to plaintext: an empty passphrase is a
+        // caller bug, not a request for "no encryption".
+        return arc::Error{arc::ErrorKind::Other, 0,
+                          "openEncrypted needs a non-empty passphrase"};
+    }
+    return openInternal(path, &passphrase);
+}
+
+arc::Result<Db> Db::openInternal(const std::string &path, const std::string *passphrase) {
     sqlite3 *handle = nullptr;
     const int rc = sqlite3_open_v2(path.c_str(), &handle,
                                    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
@@ -154,8 +166,33 @@ arc::Result<Db> Db::open(const std::string &path) {
         }
         return error;
     }
+
+    if (passphrase != nullptr) {
+        // Pin the on-disk format BEFORE the key. ChaCha20 is also the library's
+        // own default, but stating it makes the format an explicit choice we
+        // can keep across SQLite3MultipleCiphers upgrades.
+        if (auto cipher = exec(handle, "PRAGMA cipher = 'chacha20';"); !cipher) {
+            sqlite3_close(handle);
+            return cipher.error();
+        }
+        if (sqlite3_key(handle, passphrase->data(), static_cast<int>(passphrase->size())) !=
+            SQLITE_OK) {
+            arc::Error error = dbError(handle, "key");
+            sqlite3_close(handle);
+            return error;
+        }
+    }
+
     Db db(handle);
     if (auto migrated = db.migrate(); !migrated) {
+        // A wrong passphrase surfaces here: the first read of an encrypted file
+        // fails with SQLITE_NOTADB. Say so plainly rather than echoing
+        // "file is not a database".
+        if (passphrase != nullptr && migrated.error().code == SQLITE_NOTADB) {
+            return arc::Error{arc::ErrorKind::Other, SQLITE_NOTADB,
+                              "cannot read the database with that passphrase "
+                              "(wrong key, or not a Klend-ario database)"};
+        }
         return migrated.error();
     }
     return db;
@@ -225,7 +262,11 @@ arc::Result<long long> Db::insertEvent(Event e) {
     if (auto done = stmt.step(); !done) {
         return done.error();
     }
-    return sqlite3_last_insert_rowid(db_);
+    const long long id = sqlite3_last_insert_rowid(db_);
+    if (auto touched = touchModified(); !touched) {
+        return touched.error();
+    }
+    return id;
 }
 
 arc::Result<void> Db::updateEvent(const Event &e) {
@@ -254,7 +295,7 @@ arc::Result<void> Db::updateEvent(const Event &e) {
     if (sqlite3_changes(db_) == 0) {
         return arc::Error{arc::ErrorKind::Other, 0, "no event with id " + std::to_string(e.id)};
     }
-    return {};
+    return touchModified();
 }
 
 arc::Result<Event> Db::getEvent(long long id) {
@@ -308,7 +349,7 @@ arc::Result<void> Db::removeEvent(long long id) {
     if (auto done = stmt.step(); !done) {
         return done.error();
     }
-    return {};
+    return touchModified();
 }
 
 arc::Result<std::string> Db::getMeta(const std::string &key) {
@@ -342,6 +383,12 @@ arc::Result<void> Db::setMeta(const std::string &key, const std::string &value) 
         return done.error();
     }
     return {};
+}
+
+arc::Result<void> Db::touchModified() {
+    // The Syncthing sync policy's "last writer" marker (see essentialAgent/
+    // MEMORY.md §7). Cheap, and the one key that changes on every write.
+    return setMeta("modified_utc", std::to_string(utcNowSeconds()));
 }
 
 } // namespace klend_ario

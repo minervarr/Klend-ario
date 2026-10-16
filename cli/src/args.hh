@@ -21,6 +21,7 @@ struct Args {
 
     // Common
     std::string dbPath; // empty => the caller uses the state-layout default
+    std::string keyFile; // empty => no --key-file; $KLEND_ARIO_KEY may be used
     bool json = false;
 
     // add

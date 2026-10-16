@@ -44,7 +44,7 @@ core/    all logic — portable, no OS headers, no frontend
 cli/     the MVP frontend; links core
 gui/     later (Phase 4)
 android/ later (Phase 7)
-libs/    firstparty submodules (archive_engine) + vendored thirdparty (sqlite3)
+libs/    firstparty submodules (archive_engine) + vendored thirdparty (sqlite3mc)
 scripts/ the zipapp build tool
 ```
 

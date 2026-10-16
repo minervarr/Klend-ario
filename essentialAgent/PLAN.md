@@ -12,7 +12,7 @@ as work lands; this file is the tracker.*
 | **0** | **Scaffold** — submodule, CMake+Ninja, pyz tool, docs, first test | **done** |
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** |
-| 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | not started |
+| 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | not started |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | not started |
 | 6 | Alarms — libnotify + PipeWire / Android native | not started |
@@ -95,6 +95,18 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 3 complete.** The plain SQLite amalgamation is replaced by
+  **SQLite3MultipleCiphers 2.6.1** (`libs/thirdparty/sqlite3mc/`, checksum
+  recorded). `Db::openEncrypted()` runs `PRAGMA cipher='chacha20'` then
+  `sqlite3_key()`, so the format is pinned and a wrong passphrase fails at open.
+  The CLI gained `--key-file` and honours `$KLEND_ARIO_KEY`; without a key an
+  encrypted file fails with a hint rather than looking empty. The sync policy is
+  settled in `MEMORY.md` §7: one file, conflict copies **detected not merged**
+  (`klend_ario::syncConflictCopies`), and every write stamps `meta.modified_utc`.
+  Tests: `schema_test` proves the encrypted file does not start with the SQLite
+  magic and that a wrong/absent key fails; `sync_test` pins the conflict-name
+  matcher; `e2e_test` drives the encrypted path through the CLI.
 
 - **Phase 2 complete (MVP reached).** The CLI's command layer moved out of
   `main()` into `cli/src/commands.{hh,cc}` so it can be driven directly by a

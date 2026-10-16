@@ -58,11 +58,10 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Namespace | `klend_ario::` |
 | Targets | `klend_ario_core` (static lib), `klend_ario_cli` (executable) |
 | `arc_fs` app name | `"klend_ario"` |
-| Storage engine | **SQLite**, vendored `sqlite3.c`/`sqlite3.h` amalgamation now |
-| sqlite3 version | **3.46.1**, vendored at `libs/thirdparty/sqlite3/` (taken from `Matrix_Player/third_party`); Phase 3 replaces the amalgamation with SQLite3MultipleCiphers |
+| Storage engine | **SQLite**, vendored as the **SQLite3MultipleCiphers 2.6.1** amalgamation (embeds SQLite 3.54.0) at `libs/thirdparty/sqlite3mc/`; one header gives both APIs |
 | Timestamps | Unix **seconds, UTC**. ISO-8601 UTC is the interchange format (`2026-10-16T09:00:00Z`, seconds optional); a per-event UTC offset is deliberately deferred |
 | Build directories | `build/` = Debug (the dev loop; tests are Debug-only), `build_release/` = Release |
-| Encryption | **SQLite3MultipleCiphers**, Phase 3 (not vendored yet) |
+| Encryption | **SQLite3MultipleCiphers 2.6.1**, page-level, pinned to **ChaCha20-Poly1305** (`PRAGMA cipher='chacha20'` before `sqlite3_key`); passphrase-derived, no keyfile format of our own |
 | DB location | `arc::fs::Layout.state` — machine data, never `home`/`data` |
 | Error type | `arc::Result<T>` / `arc::Error` from `arc_util` |
 | `archive_engine` | git submodule at `libs/firstparty/archive_engine` |
@@ -122,8 +121,10 @@ These are truths this workspace already paid for. Do not relearn them.
   open item, not an oversight.
 - **Vendor what must build identically everywhere.** sqlite3 is vendored rather
   than found on the system so Linux and Android compile the same version with no
-  package to install. `SQLite3MultipleCiphers` will be vendored the same way in
-  Phase 3.
+  package to install — first the plain amalgamation (Phase 0), now the
+  SQLite3MultipleCiphers amalgamation that carries the encryption (Phase 3).
+  Record the exact version and the download's checksum beside the vendored
+  files (`libs/thirdparty/sqlite3mc/README.md`).
 
 ## 6. Glossary
 
@@ -134,3 +135,43 @@ These are truths this workspace already paid for. Do not relearn them.
 - **`vk_canvas`** — the Vulkan 2D canvas + text engine. The GUI renderer.
 - **`merged.md`** — the product plan. **`git_wrapper`** — the commit tool at the
   repo root (see `AGENTS.md`).
+
+## 7. Encryption and sync (Phase 3)
+
+Two of `merged.md`'s §11 open items were settled here; the reasoning is short
+enough to keep, because both were decided against an obvious alternative.
+
+### Encryption
+
+- **Passphrase, not a keyfile.** The database is a single file that Syncthing
+  copies between devices, so it must be self-contained: a passphrase is derived
+  against a **salt the file carries**, and nothing else needs to travel with it.
+  A separate key file would be a second thing to sync, to lose, and to keep in
+  step with the database it opens.
+- **ChaCha20-Poly1305, pinned.** `core/src/db.cc` runs `PRAGMA cipher =
+  'chacha20'` **before** `sqlite3_key()`. ChaCha20 is also SQLite3MultipleCiphers'
+  own default, but stating it makes the on-disk format our explicit choice rather
+  than a library default that could change under an upgrade — a file written
+  today must still open in a year.
+- **A wrong passphrase fails at open**, not on a later read. The first schema
+  query returns `SQLITE_NOTADB`, which `Db::openEncrypted` turns into "wrong key,
+  or not a Klend-ario database". An **empty** passphrase is refused outright
+  rather than silently meaning "plaintext".
+- **Where the secret comes from is the frontend's job.** Core takes a
+  `std::string`; the CLI reads `--key-file <path>` (first line) or
+  `$KLEND_ARIO_KEY`, and does nothing about prompts yet.
+
+### Sync
+
+- **One file, last-writer-wins, and conflicts are SURFACED, not merged.**
+  Syncthing does not merge a file; it keeps one copy and writes the other as
+  `<stem>.sync-conflict-<date>-<time>-<device><ext>` (the marker goes *before*
+  the extension). Auto-merging two calendars is not something we can do
+  correctly, so the policy is to **detect and report** — `klend_ario::
+  syncConflictCopies()` (pure matcher + a non-throwing `listDir`), and the CLI
+  prints a warning on every open while one is present.
+- **Every write stamps `meta.modified_utc`** (`Db::touchModified`), so "when was
+  this last changed, and by which side of a conflict" has an answer in the file
+  itself.
+- A conflict copy is a **separate file**, never opened or read; resolving one is
+  a human's call (rename it in, or delete it).

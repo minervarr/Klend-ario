@@ -34,6 +34,13 @@ public:
     // caller owns WHERE the file lives: core never invents a path — the CLI
     // supplies arc::fs::layout("klend_ario").state (essentialAgent/AGENTS.md §2.3).
     static arc::Result<Db> open(const std::string &path);
+
+    // Opens an encrypted database with `passphrase` (Phase 3). ChaCha20-
+    // Poly1305 via SQLite3MultipleCiphers; the key is derived by the library.
+    // A wrong passphrase fails here rather than on a later read. Passphrases
+    // never touch the schema — the file carries its own salt.
+    static arc::Result<Db> openEncrypted(const std::string &path, const std::string &passphrase);
+
     static arc::Result<Db> openMemory();
 
     // Inserts `e`, ignoring its id, and returns the rowid it was given. Fills
@@ -65,7 +72,9 @@ public:
 
 private:
     explicit Db(sqlite3 *handle) : db_(handle) {}
+    static arc::Result<Db> openInternal(const std::string &path, const std::string *passphrase);
     arc::Result<void> migrate();
+    arc::Result<void> touchModified();
 
     sqlite3 *db_ = nullptr;
 };
