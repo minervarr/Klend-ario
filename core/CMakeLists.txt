@@ -20,6 +20,7 @@ add_library(klend_ario_core STATIC
     src/db.cc
     src/schema.cc
     src/event.cc
+    src/alarm.cc
     src/sync.cc)
 
 target_include_directories(klend_ario_core
@@ -62,3 +63,9 @@ klend_ario_add_test(sync_test
     SOURCES  tests/sync_test.cc src/sync.cc
     INCLUDES include
     LIBS     arc_fs)
+
+# alarm_test — when an alarm fires, as pure calendar arithmetic. No notifier,
+# no clock, no platform: it is a function of the events and a time window.
+klend_ario_add_test(alarm_test
+    SOURCES  tests/alarm_test.cc src/alarm.cc src/event.cc
+    INCLUDES include)

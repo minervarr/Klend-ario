@@ -43,6 +43,7 @@ ctest --test-dir build --output-on-failure
 core/    all logic — portable, no OS headers, no frontend
 cli/     the MVP frontend; links core
 mcp/     the local MCP server (JSON-RPC over stdio); links core
+alarm/   the alarm engine (libnotify, or a log); links core
 gui/     the weekly view — pure geometry now, vk_canvas renderer later (Phase 4)
 android/ later (Phase 7)
 libs/    firstparty submodules (archive_engine) + vendored thirdparty (sqlite3mc)

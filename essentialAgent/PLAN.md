@@ -15,7 +15,7 @@ as work lands; this file is the tracker.*
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **in progress** — geometry done; renderer pending SDK |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
-| 6 | Alarms — libnotify + PipeWire / Android native | not started |
+| 6 | Alarms — libnotify + PipeWire / Android native | **done** (notify; PipeWire sound is a named gap) |
 | 7 | Android platform layer + storage permissions | not started |
 
 **MVP = 0–2.** Detail for phases 3–7 is in [`../merged.md`](../merged.md).
@@ -95,6 +95,16 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 6 complete — alarms fire.** Core gained the pure scheduling
+  (`alarmsIn`/`dueAlarms`/`nextAlarm`, `alarm_test`), and a new frontend
+  `alarm/` (targets `klend_ario_alarm`, `klend_ario_alarmd`) polls the calendar
+  and delivers each event's T-offset and T=0 triggers. Delivery is a `Notifier`
+  seam: libnotify when present (it is here, 0.8.8), else a stderr log; `--notify
+  log` forces the log, and a libnotify that cannot initialise now FALLS BACK
+  rather than swallowing the alarm. `engine_test` drives the poll window and
+  de-duplication with a fake notifier. **PipeWire sound is not implemented** —
+  notifications only, and the gap is named in `MEMORY.md` §9.
 
 - **Phase 5 complete — the MCP server exists and works.** New frontend `mcp/`
   (targets `klend_ario_mcp`, `klend_ario_mcp_server`): JSON-RPC over stdio, one

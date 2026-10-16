@@ -200,3 +200,23 @@ enough to keep, because both were decided against an obvious alternative.
 - The server is a **frontend**: it links core, opens the database through `Db`,
   and never reaches past it. `update_event` is the user-facing path for the
   `Db::updateEvent` added in Phase 1.
+
+## 9. Alarms (Phase 6)
+
+- **Deciding is pure; delivering is a seam.** WHEN an alarm fires is
+  `klend_ario::alarmsIn` / `dueAlarms` / `nextAlarm` in core — a function of the
+  events and a time window, asserted in `alarm_test`. HOW it is delivered is a
+  `Notifier` installed by the `alarm/` frontend (libnotify on Linux), the same
+  installed-backend shape as `arc_fs`'s media index.
+- **Two triggers per event** (`merged.md` §6): T-offset first, then T=0, both
+  from `event.hh`'s `alarmTriggersUtc`.
+- **The poll window is (previous poll, now],** and the FIRST poll opens
+  `now - horizon` back (default 60s) so a restart does not replay yesterday's
+  alarms while a late start still catches a recent one. `engine_test` pins both
+  the window and the no-replay behaviour.
+- **A notifier that cannot work must not swallow the alarm.** libnotify is tried
+  first; if it cannot initialise (headless, no session bus) the engine falls
+  back to a stderr log, and `--notify log` forces that path. This was found the
+  hard way: the first backend no-op'd silently.
+- **PipeWire sound is NOT implemented yet.** Notifications fire; the audible
+  half of `merged.md` §6 is an open gap, named rather than faked.
