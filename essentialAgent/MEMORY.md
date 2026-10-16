@@ -103,6 +103,12 @@ These are truths this workspace already paid for. Do not relearn them.
 - **Shared libraries are consumed by `add_subdirectory`, never packaged.**
   `archive_engine`, `app_shell`, `vk_canvas` are all pinned submodules. A change
   to one is pushed there first, then the pin advanced here.
+- **View geometry is pure, and pure geometry is tested.** The weekly view's
+  layout (`gui/src/week_layout.*`) takes pixels and instants and returns
+  rectangles — no Canvas, no OS, no window. That is what lets it be asserted
+  exhaustively on a machine with no GPU, and it is why the layout is the first
+  half of Phase 4 rather than the last. Colours stay in core
+  (`klend_ario::styleFor`) so every surface that draws an event agrees.
 - **The CLI command layer is separate from `main()`.** `cli/src/commands.cc`
   holds exactly one function per verb and a single `runCommand`; `main()` only
   builds the arg vector and calls it. That is what lets `cli/tests/e2e_test.cc`

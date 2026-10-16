@@ -13,7 +13,7 @@ as work lands; this file is the tracker.*
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
-| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | not started |
+| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **in progress** — geometry done; renderer pending SDK |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | not started |
 | 6 | Alarms — libnotify + PipeWire / Android native | not started |
 | 7 | Android platform layer + storage permissions | not started |
@@ -95,6 +95,18 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 4 started — the weekly view's geometry is done and tested.**
+  `gui/src/week_layout.{hh,cc}` (target `klend_ario_view`) computes the frame
+  margins (1cm-equivalent at FHD+, full-bleed below), the seven Sunday-first
+  day columns (tiling the width exactly, remainder spread so there is no seam),
+  each event's box on a 00:00–24:00 axis with clipping flags, and the hatched
+  "nothing else today" tail. It is pure — no Canvas, no OS, no window — so
+  `gui/tests/week_layout_test.cc` asserts the whole view with no GPU, which is
+  the only way it can be trusted before it is drawn. **The vk_canvas renderer
+  is not built yet**: this machine has the Vulkan headers/loader but no
+  `slangc` shader compiler and no display, so that half is left for an
+  environment that can actually run it.
 
 - **Phase 3 complete.** The plain SQLite amalgamation is replaced by
   **SQLite3MultipleCiphers 2.6.1** (`libs/thirdparty/sqlite3mc/`, checksum

@@ -51,8 +51,11 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# The app: core (all logic) then cli (the MVP frontend). core/ never links a
-# frontend; frontends link core.
+# The app: core (all logic), then the frontends. core/ never links a frontend;
+# frontends link core. cli/ is the MVP frontend; gui/ is the weekly view (its
+# pure geometry builds and tests today; the vk_canvas renderer is gated on the
+# Vulkan SDK + slangc).
 # ---------------------------------------------------------------------------
 add_subdirectory(core)
 add_subdirectory(cli)
+add_subdirectory(gui)
