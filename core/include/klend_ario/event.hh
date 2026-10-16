@@ -96,4 +96,15 @@ long long startOfWeekUtc(long long utcSeconds);
 // first (when the event carries one), then T=0 (merged.md §6). Ascending.
 std::vector<long long> alarmTriggersUtc(const Event &event);
 
+// The week counter shown at the top of the weekly view (merged.md §5.2): the
+// calendar year and a 1-based week number. Sundays start a week; week 1 is the
+// week containing 1 January and may be short, which is the common US reading
+// (ISO 8601 would start weeks on Monday and is deliberately NOT used here,
+// because the product's week starts Sunday).
+struct WeekOfYear {
+    int year = 1970;
+    int week = 1;
+};
+WeekOfYear weekOfYearUtc(long long utcSeconds);
+
 } // namespace klend_ario

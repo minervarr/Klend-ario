@@ -73,8 +73,9 @@ These were decided for this repository specifically, on top of `merged.md`:
 
 Product decisions (from `merged.md`, §1) that bind the code: events are
 **individual rows**; importance → hue (violet 0 → red 100); urgency → border
-thickness; week starts **Sunday**; sleep hours hideable; alarms fire at
-**T−offset and T=0**; MCP is **read/write from day one** with permission tiers.
+thickness; week starts Sunday; the week counter is a Sunday-based week-of-year
+(the US reading, not ISO 8601); sleep hours hideable; alarms fire at **T−offset
+and T=0**; MCP is **read/write from day one** with permission tiers.
 
 ## 5. Lessons inherited from the sibling projects
 

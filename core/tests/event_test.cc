@@ -122,6 +122,20 @@ static void testAlarmTriggers() {
     assert(only[0] == e.startUtc);
 }
 
+static void testWeekCounter() {
+    // 2026-01-01 was a Thursday, so week 1 is Jan 1..Jan 3 and the next Sunday
+    // (Jan 4) opens week 2.
+    const WeekOfYear w1 = weekOfYearUtc(*parseIso8601("2026-01-01T00:00:00Z"));
+    assert(w1.year == 2026 && w1.week == 1);
+    assert(weekOfYearUtc(*parseIso8601("2026-01-03T23:59:59Z")).week == 1);
+    assert(weekOfYearUtc(*parseIso8601("2026-01-04T00:00:00Z")).week == 2);
+    // A mid-year date: 2026-10-16 is day 289 (0-based 288); (288 + 4)/7 + 1 = 42.
+    const WeekOfYear mid = weekOfYearUtc(*parseIso8601("2026-10-16T12:00:00Z"));
+    assert(mid.year == 2026 && mid.week == 42);
+    // A late-December date stays in its own (old) year.
+    assert(weekOfYearUtc(*parseIso8601("2025-12-31T12:00:00Z")).year == 2025);
+}
+
 int main() {
     testIsoRoundTrip();
     testEpochAnchor();
@@ -135,6 +149,7 @@ int main() {
     testStyleFromEvent();
     testWeekdayAndWeekStart();
     testAlarmTriggers();
+    testWeekCounter();
     std::printf("event_test: all assertions passed\n");
     return 0;
 }

@@ -16,7 +16,7 @@ as work lands; this file is the tracker.*
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **in progress** — geometry done; renderer pending SDK |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
 | 6 | Alarms — libnotify + PipeWire / Android native | **done** (notify; PipeWire sound is a named gap) |
-| 7 | Android platform layer + storage permissions | not started |
+| 7 | Android platform layer + storage permissions | **not started** — needs the NDK/SDK (see `android/README.md`) |
 
 **MVP = 0–2.** Detail for phases 3–7 is in [`../merged.md`](../merged.md).
 
@@ -95,6 +95,15 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Week counter added to core** (`weekOfYearUtc`): the Sunday-based week-of-year
+  the weekly view shows (merged.md §5.2), asserted in `event_test`. It is the US
+  reading — week 1 contains 1 January and may be short — chosen because the
+  product's week starts Sunday, not Monday.
+- **Phase 7 planned, not faked.** `android/README.md` now states exactly what
+  the platform layer must do (push the private directory into `arc::fs`, request
+  the storage permission, link the same `core/`) and that it is unbuilt because
+  no NDK/SDK was present.
 
 - **Phase 6 complete — alarms fire.** Core gained the pure scheduling
   (`alarmsIn`/`dueAlarms`/`nextAlarm`, `alarm_test`), and a new frontend

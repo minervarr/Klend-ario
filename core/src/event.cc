@@ -213,4 +213,23 @@ std::vector<long long> alarmTriggersUtc(const Event &event) {
     return triggers;
 }
 
+WeekOfYear weekOfYearUtc(long long utcSeconds) {
+    const long long days = floorDiv(utcSeconds, 86400);
+    long long year = 0;
+    unsigned month = 0, day = 0;
+    civilFromDays(days, year, month, day);
+
+    const long long jan1 = daysFromCivil(year, 1, 1);
+    const int jan1Weekday = static_cast<int>(floorMod(jan1 + 4, 7)); // 0 = Sunday
+    const long long dayOfYear = days - jan1;                         // 0-based
+
+    WeekOfYear counter;
+    counter.year = static_cast<int>(year);
+    // Week 1 holds 1 January; each following Sunday opens the next week. The
+    // integer division truncates, which is exactly the "first Sunday on or
+    // after 1 January" boundary.
+    counter.week = static_cast<int>((dayOfYear + jan1Weekday) / 7) + 1;
+    return counter;
+}
+
 } // namespace klend_ario
