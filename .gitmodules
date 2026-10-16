@@ -1,6 +1,9 @@
 [submodule "assets/fonts"]
 	path = assets/fonts
 	url = https://github.com/minervarr/fonts
+[submodule "libs/firstparty/archive_engine"]
+	path = libs/firstparty/archive_engine
+	url = https://github.com/minervarr/archive_engine
 [submodule "libs/firstparty/framework/App_shell"]
 	path = libs/firstparty/framework/App_shell
 	url = https://github.com/minervarr/App_shell

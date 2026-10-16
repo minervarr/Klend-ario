@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // The agent manual lives in essentialAgent/. Read its README.md first.
+  // These files load every session so the rules and decisions always apply.
+  "instructions": [
+    "essentialAgent/AGENTS.md",
+    "essentialAgent/MEMORY.md",
+    "essentialAgent/TESTING.md",
+  ],
+  // Reusable workflows (essentialAgent/skills/klend-ario/SKILL.md).
+  "skills": ["./essentialAgent/skills"],
+}

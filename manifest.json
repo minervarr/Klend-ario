@@ -1,0 +1,11 @@
+{
+  "name": "klend_ario",
+  "description": "Privacy-first, AI-native personal calendar: one encrypted SQLite file, synced, queryable, rendered as a weekly view.",
+  "version": "0.1.0",
+  "platforms": ["linux", "android"],
+  "language": "C++17",
+  "build": {
+    "linux": "scripts/build.sh"
+  },
+  "database": "sqlite3"
+}

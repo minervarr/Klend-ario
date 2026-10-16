@@ -1,6 +1,24 @@
 # Build output
 build/
+build_*/
+
+# Python build tool (zipapp + caches)
+__pycache__/
+*.py[cod]
+scripts/*.pyz
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# CMake
+compile_commands.json
 
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp

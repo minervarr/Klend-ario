@@ -1,0 +1,9 @@
+// Generated from sql/schema.sql at configure time — do not edit the generated
+// copy; edit the .sql file and reconfigure.
+#pragma once
+
+namespace klend_ario {
+
+inline constexpr const char *kSchemaSql = R"KLEND_SCHEMA(@KLEND_ARIO_SCHEMA_SQL@)KLEND_SCHEMA";
+
+} // namespace klend_ario

@@ -1,0 +1,60 @@
+---
+name: Klend-ario
+description: Work in the Klend-ario calendar repo — build/test with CMake+Ninja, and add a feature end-to-end (core function, test, CLI verb) following its conventions.
+---
+
+# Klend-ario workflow
+
+Use this when asked to change code in the **Klend-ario** repository. The rules
+live in `essentialAgent/AGENTS.md`; this is the step-by-step procedure.
+
+## Before touching code
+
+1. Read `essentialAgent/MEMORY.md` (what/why/decisions) and
+   `essentialAgent/AGENTS.md` (invariants).
+2. Check `essentialAgent/PLAN.md` for the current phase. Do not build ahead of
+   it without being asked.
+
+## Build & test loop
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+ninja -C build
+ctest --test-dir build --output-on-failure
+./build/cli/klend_ario_cli --help
+```
+
+Tests are plain `assert()` binaries registered with CTest (`TESTING.md`).
+
+## Adding a feature end-to-end (the standard slice)
+
+Work inside-out: model → storage → CLI. Never put logic in the CLI.
+
+1. **Decide where it lives.** Business logic in `core/`; only argument parsing
+   and printing in `cli/`. `core/` must stay portable (no OS headers, no JNI).
+2. **Model** — add/extend a header in `core/include/klend_ario/`. Return
+   `arc::Result<T>` on failure paths; do not throw.
+3. **Storage** — if it needs the DB, add SQL to `core/sql/schema.sql`
+   (additive/versioned) and a function in `core/src/db.cc`. The DB path comes
+   from `arc::fs::layout("klend_ario").state`.
+4. **Core test** — add `core/tests/<name>_test.cc` (`#undef NDEBUG`, asserts),
+   register it in `core/CMakeLists.txt` with `klend_ario_add_test(...)`. Use an
+   **in-memory** DB (`:memory:`) for storage tests. Make it fail first, then make
+   it pass.
+5. **CLI** — parse any new flags in `cli/src/args.cc` (std-only, unit-tested in
+   `cli/tests/args_test.cc`), then call the core function from `cli/src/main.cc`
+   and print. No logic here.
+6. **Prove it.** `ninja -C build && ctest --test-dir build --output-on-failure`
+   must be green, and the manual CLI check must behave.
+7. **Record** — if you made a decision or found a gotcha, write it into
+   `essentialAgent/` (usually `MEMORY.md` or the `PLAN.md` status log).
+8. **Commit** — `./git_wrapper save "…"`. If a submodule changed, it is pushed
+   first automatically; never use plain `git commit`/`git push`.
+
+## Guardrails
+
+- Do not edit `libs/firstparty/archive_engine` for our convenience — it is shared
+  with Matrix_Player and the streamer. If a real gap appears, note it in
+  `MEMORY.md` and push there first.
+- Do not add a dependency without recording the decision.
+- Do not start the GUI, MCP, or encryption before their phase.
