@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // The calendar's model, as a value.
 //
@@ -52,5 +53,47 @@ std::string formatIso8601(long long utcSeconds);
 // reached for at each call site, so there is one thing to fake and one place
 // to reason about.
 long long utcNowSeconds();
+
+// ---------------------------------------------------------------------------
+// Priority and urgency, the two independent visual axes (merged.md §4):
+//
+//   importance -> hue        violet (0) .. red (100)
+//   urgency    -> border     thin (0) .. thick (100)
+//
+// Same hue either way; urgency never introduces a second colour channel, which
+// is the whole point of the Eisenhower encoding. These are PURE so the weekly
+// view and any later surface (print, MCP preview) colour an event identically.
+//
+// The endpoints are compile-time constants for now; they move into `meta` when
+// they become user-tunable, which is why callers take a number and not a struct.
+// ---------------------------------------------------------------------------
+inline constexpr double kImportanceLowHue = 270.0;  // violet
+inline constexpr double kImportanceHighHue = 0.0;   // red
+
+double hueForImportance(int importance);          // degrees, 0..360
+double borderFactorForUrgency(int urgency);        // 0..1
+
+struct EventStyle {
+    double hue = kImportanceLowHue; // degrees
+    double borderFactor = 0.5;      // 0..1
+};
+EventStyle styleFor(const Event &event);
+
+// ---------------------------------------------------------------------------
+// Calendar arithmetic. The week STARTS SUNDAY (merged.md §1) and every instant
+// is UTC. Pure integer math — no <ctime>, no timezone database — so a boundary
+// can be asserted exactly.
+// ---------------------------------------------------------------------------
+
+// 0 = Sunday .. 6 = Saturday, for the UTC day containing `utcSeconds`.
+int weekdayUtc(long long utcSeconds);
+
+// The timestamp of 00:00 UTC on the Sunday that begins the week containing
+// `utcSeconds`.
+long long startOfWeekUtc(long long utcSeconds);
+
+// The instants at which an event should fire an alarm: the T-offset trigger
+// first (when the event carries one), then T=0 (merged.md §6). Ascending.
+std::vector<long long> alarmTriggersUtc(const Event &event);
 
 } // namespace klend_ario

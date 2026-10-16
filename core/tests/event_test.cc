@@ -61,6 +61,67 @@ static void testTypeNames() {
     }
 }
 
+static void testImportanceHue() {
+    // The anchors are the ends of the Eisenhower colours: violet (low) at 0,
+    // red (high) at 100.
+    assert(hueForImportance(0) == kImportanceLowHue);
+    assert(hueForImportance(100) == kImportanceHighHue);
+    assert(hueForImportance(50) == 135.0); // straight interpolation
+    // Out of range is CLAMPED, never wrapped back around the colour wheel.
+    assert(hueForImportance(-10) == hueForImportance(0));
+    assert(hueForImportance(1000) == hueForImportance(100));
+    // Monotone from violet down to red.
+    assert(hueForImportance(25) > hueForImportance(75));
+}
+
+static void testUrgencyBorder() {
+    assert(borderFactorForUrgency(0) == 0.0);
+    assert(borderFactorForUrgency(50) == 0.5);
+    assert(borderFactorForUrgency(100) == 1.0);
+    assert(borderFactorForUrgency(999) == 1.0);
+}
+
+static void testStyleFromEvent() {
+    Event e;
+    e.importance = 100;
+    e.urgency = 0;
+    const EventStyle style = styleFor(e);
+    assert(style.hue == 0.0);
+    assert(style.borderFactor == 0.0);
+}
+
+static void testWeekdayAndWeekStart() {
+    // 1970-01-01 (the epoch) was a Thursday, which is 4 with Sunday == 0.
+    assert(weekdayUtc(0) == 4);
+    // 2026-10-16 is a Friday.
+    const auto friday = parseIso8601("2026-10-16T12:00:00Z");
+    assert(friday.has_value());
+    assert(weekdayUtc(*friday) == 5);
+    // Its week begins on the Sunday before it: 2026-10-11, 00:00 UTC.
+    const long long sunday = *parseIso8601("2026-10-11T00:00:00Z");
+    assert(startOfWeekUtc(*friday) == sunday);
+    // A Sunday noon is its own week start.
+    assert(startOfWeekUtc(*parseIso8601("2026-10-11T12:00:00Z")) == sunday);
+    // The Saturday before belongs to the PREVIOUS week (2026-10-04).
+    assert(startOfWeekUtc(*parseIso8601("2026-10-10T23:59:59Z")) ==
+           *parseIso8601("2026-10-04T00:00:00Z"));
+}
+
+static void testAlarmTriggers() {
+    Event e;
+    e.startUtc = *parseIso8601("2026-10-16T09:00:00Z");
+    e.alarmOffset = 600; // ten minutes before
+    const std::vector<long long> both = alarmTriggersUtc(e);
+    assert(both.size() == 2);
+    assert(both[0] == e.startUtc - 600); // T-offset fires first
+    assert(both[1] == e.startUtc);       // then T=0
+
+    e.alarmOffset = 0;
+    const std::vector<long long> only = alarmTriggersUtc(e);
+    assert(only.size() == 1);
+    assert(only[0] == e.startUtc);
+}
+
 int main() {
     testIsoRoundTrip();
     testEpochAnchor();
@@ -69,6 +130,11 @@ int main() {
     testLeapDay();
     testPreEpoch();
     testTypeNames();
+    testImportanceHue();
+    testUrgencyBorder();
+    testStyleFromEvent();
+    testWeekdayAndWeekStart();
+    testAlarmTriggers();
     std::printf("event_test: all assertions passed\n");
     return 0;
 }

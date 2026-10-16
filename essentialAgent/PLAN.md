@@ -10,7 +10,7 @@ as work lands; this file is the tracker.*
 | Phase | Deliverable | Status |
 |---|---|---|
 | **0** | **Scaffold** — submodule, CMake+Ninja, pyz tool, docs, first test | **done** |
-| 1 | Core — SQLite schema + storage + model, with tests | not started |
+| 1 | Core — SQLite schema + storage + model, with tests | **done** |
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | not started |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | not started |
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | not started |
@@ -95,6 +95,15 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 1 complete.** `core/` now carries the whole model: `updateEvent`
+  (bumps `updated_utc`, preserves `created_utc`, errors on a stale id), the
+  `meta` key/value API, a real migration policy (schema version in `meta`; a
+  database from a NEWER build is refused, not misread), and the pure product
+  helpers — `hueForImportance` (violet→red), `borderFactorForUrgency`,
+  `styleFor`, `weekdayUtc`/`startOfWeekUtc` (week starts Sunday), and
+  `alarmTriggersUtc` (T-offset then T=0). Tests grew to cover all of it;
+  `event_test` + `schema_test` remain narrow.
 
 - **Phase 0 complete.** The walking skeleton is green end to end: `cmake -B build
   -G Ninja -DCMAKE_BUILD_TYPE=Debug` → `ninja -C build` → `ctest` (3/3:

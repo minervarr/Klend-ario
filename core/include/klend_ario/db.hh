@@ -40,6 +40,11 @@ public:
     // created_utc/updated_utc with utcNowSeconds() when they are 0.
     arc::Result<long long> insertEvent(Event e);
 
+    // Updates the event named by `e.id`, bumping updated_utc to now and leaving
+    // created_utc as stored. Fails when no row has that id, so a stale edit is
+    // reported rather than silently lost.
+    arc::Result<void> updateEvent(const Event &e);
+
     // The event with `id`, or an error when there is none.
     arc::Result<Event> getEvent(long long id);
 
@@ -49,6 +54,14 @@ public:
 
     // Deletes `id`. Succeeds even when nothing matched.
     arc::Result<void> removeEvent(long long id);
+
+    // ---------------------------------------------------------------------
+    // `meta` — small key/value settings (the schema version, and later the
+    // user's prefs: sleep window, week start, colour anchors). The schema
+    // version is the one key core itself owns.
+    // ---------------------------------------------------------------------
+    arc::Result<std::string> getMeta(const std::string &key); // "" when absent
+    arc::Result<void> setMeta(const std::string &key, const std::string &value);
 
 private:
     explicit Db(sqlite3 *handle) : db_(handle) {}

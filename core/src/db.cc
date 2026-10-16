@@ -5,6 +5,7 @@
 #include <sqlite3.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <utility>
 
 namespace klend_ario {
@@ -166,14 +167,31 @@ arc::Result<void> Db::migrate() {
     if (auto applied = exec(db_, schemaSql()); !applied) {
         return applied.error();
     }
-    // Record/refresh the version now that `meta` exists. A future migration
-    // reads the old value first and applies additive steps up to kSchemaVersion.
-    char sql[160];
-    std::snprintf(sql, sizeof(sql),
-                  "INSERT INTO meta(key, value) VALUES('schema_version', '%d') "
-                  "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                  kSchemaVersion);
-    return exec(db_, sql);
+
+    int current = 0;
+    auto stored = getMeta("schema_version");
+    if (!stored) {
+        return stored.error();
+    }
+    if (!stored.value().empty()) {
+        current = std::atoi(stored.value().c_str());
+    }
+
+    // A database written by a NEWER build is refused rather than opened and
+    // quietly misread: forward compatibility is not ours to guess.
+    if (current > kSchemaVersion) {
+        return arc::Error{arc::ErrorKind::Other, 0,
+                          "database schema v" + std::to_string(current) +
+                              " is newer than this build (v" + std::to_string(kSchemaVersion) +
+                              ")"};
+    }
+
+    // Additive steps run here, in order, as versions are introduced:
+    //   for (int v = current + 1; v <= kSchemaVersion; ++v) applyStep(v);
+    // There are none yet — v1 is the initial schema, and schema.sql is
+    // idempotent, so a fresh or older database is brought to v1 by the CREATE
+    // statements already above.
+    return setMeta("schema_version", std::to_string(kSchemaVersion));
 }
 
 arc::Result<long long> Db::insertEvent(Event e) {
@@ -208,6 +226,35 @@ arc::Result<long long> Db::insertEvent(Event e) {
         return done.error();
     }
     return sqlite3_last_insert_rowid(db_);
+}
+
+arc::Result<void> Db::updateEvent(const Event &e) {
+    static const char *kUpdate =
+        "UPDATE events SET title=?, start_utc=?, end_utc=?, type=?, importance=?, "
+        "urgency=?, alarm_offset=?, hidden=?, notes=?, updated_utc=? WHERE id=?";
+    Statement stmt;
+    if (auto prepared = stmt.prepare(db_, kUpdate); !prepared) {
+        return prepared.error();
+    }
+    stmt.bindText(1, e.title);
+    stmt.bindInt(2, e.startUtc);
+    stmt.bindInt(3, e.endUtc);
+    stmt.bindText(4, eventTypeName(e.type));
+    stmt.bindInt(5, e.importance);
+    stmt.bindInt(6, e.urgency);
+    stmt.bindInt(7, e.alarmOffset);
+    stmt.bindBool(8, e.hidden);
+    stmt.bindText(9, e.notes);
+    stmt.bindInt(10, utcNowSeconds()); // updated_utc, always refreshed
+    stmt.bindInt(11, e.id);
+    if (auto done = stmt.step(); !done) {
+        return done.error();
+    }
+    // created_utc is deliberately not touched: an edit did not create anything.
+    if (sqlite3_changes(db_) == 0) {
+        return arc::Error{arc::ErrorKind::Other, 0, "no event with id " + std::to_string(e.id)};
+    }
+    return {};
 }
 
 arc::Result<Event> Db::getEvent(long long id) {
@@ -258,6 +305,39 @@ arc::Result<void> Db::removeEvent(long long id) {
         return prepared.error();
     }
     stmt.bindInt(1, id);
+    if (auto done = stmt.step(); !done) {
+        return done.error();
+    }
+    return {};
+}
+
+arc::Result<std::string> Db::getMeta(const std::string &key) {
+    Statement stmt;
+    if (auto prepared = stmt.prepare(db_, "SELECT value FROM meta WHERE key = ?"); !prepared) {
+        return prepared.error();
+    }
+    stmt.bindText(1, key);
+    auto row = stmt.step();
+    if (!row) {
+        return row.error();
+    }
+    if (!row.value()) {
+        return std::string{}; // absent is not an error: prefs simply are not set
+    }
+    const auto *text = sqlite3_column_text(stmt.get(), 0);
+    return std::string(text != nullptr ? reinterpret_cast<const char *>(text) : "");
+}
+
+arc::Result<void> Db::setMeta(const std::string &key, const std::string &value) {
+    Statement stmt;
+    if (auto prepared = stmt.prepare(db_,
+                                     "INSERT INTO meta(key, value) VALUES(?, ?) "
+                                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+        !prepared) {
+        return prepared.error();
+    }
+    stmt.bindText(1, key);
+    stmt.bindText(2, value);
     if (auto done = stmt.step(); !done) {
         return done.error();
     }

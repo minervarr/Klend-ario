@@ -1,9 +1,11 @@
 #undef NDEBUG
 #include <cassert>
 #include <cstdio>
+#include <string>
 
 #include "klend_ario/db.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/schema.hh"
 
 using namespace klend_ario;
 
@@ -92,6 +94,83 @@ void testMissingEventIsError() {
     assert(!db.value().getEvent(42).ok());
 }
 
+void testUpdateEvent() {
+    auto db = Db::openMemory();
+    assert(db.ok());
+    auto id = db.value().insertEvent(makeEvent("draft", 100, 200));
+    assert(id.ok());
+    auto before = db.value().getEvent(id.value());
+    assert(before.ok());
+
+    Event edit = before.value();
+    edit.title = "final";
+    edit.endUtc = 300;
+    edit.hidden = true;
+    edit.type = EventType::Sleep;
+    edit.notes = "moved";
+    assert(db.value().updateEvent(edit).ok());
+
+    auto after = db.value().getEvent(id.value());
+    assert(after.ok());
+    assert(after.value().title == "final");
+    assert(after.value().endUtc == 300);
+    assert(after.value().hidden);
+    assert(after.value().type == EventType::Sleep);
+    assert(after.value().notes == "moved");
+    // An edit does not create: created_utc is untouched.
+    assert(after.value().createdUtc == before.value().createdUtc);
+
+    // Updating an id that is not there is reported, not a silent no-op.
+    Event ghost = edit;
+    ghost.id = 999999;
+    assert(!db.value().updateEvent(ghost).ok());
+}
+
+void testRangeBoundaryIsHalfOpen() {
+    auto db = Db::openMemory();
+    assert(db.ok());
+    db.value().insertEvent(makeEvent("touches", 900, 1000)); // ends exactly at `from`
+    db.value().insertEvent(makeEvent("inside", 1000, 1100));
+    auto list = db.value().listEvents(1000, 2000);
+    assert(list.ok());
+    assert(list.value().size() == 1);
+    assert(list.value()[0].title == "inside");
+}
+
+void testMeta() {
+    auto db = Db::openMemory();
+    assert(db.ok());
+    // An absent key is empty, not an error: preferences simply are not set.
+    assert(db.value().getMeta("week_start").value().empty());
+    assert(db.value().setMeta("week_start", "sunday").ok());
+    assert(db.value().getMeta("week_start").value() == "sunday");
+    // Writing again overwrites.
+    assert(db.value().setMeta("week_start", "monday").ok());
+    assert(db.value().getMeta("week_start").value() == "monday");
+}
+
+void testSchemaVersionIsRecorded() {
+    auto db = Db::openMemory();
+    assert(db.ok());
+    assert(db.value().getMeta("schema_version").value() == std::to_string(kSchemaVersion));
+}
+
+void testNewerSchemaIsRefused() {
+    // This needs a real file: the guard only shows when the SAME database is
+    // reopened. It lives in the test's working directory and is removed after.
+    const char *path = "klend_schema_guard_test.db";
+    std::remove(path);
+    {
+        auto db = Db::open(path);
+        assert(db.ok());
+        // Pretend a newer build wrote this file.
+        assert(db.value().setMeta("schema_version", std::to_string(kSchemaVersion + 1)).ok());
+    }
+    auto reopened = Db::open(path);
+    assert(!reopened.ok());
+    std::remove(path);
+}
+
 } // namespace
 
 int main() {
@@ -100,6 +179,11 @@ int main() {
     testListRangeOverlap();
     testRemove();
     testMissingEventIsError();
+    testUpdateEvent();
+    testRangeBoundaryIsHalfOpen();
+    testMeta();
+    testSchemaVersionIsRecorded();
+    testNewerSchemaIsRefused();
     std::printf("schema_test: all assertions passed\n");
     return 0;
 }

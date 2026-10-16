@@ -64,6 +64,16 @@ bool readDigits(std::string_view text, size_t pos, size_t n, long long &out) {
     return true;
 }
 
+int clampTo100(int value) {
+    if (value < 0) {
+        return 0;
+    }
+    if (value > 100) {
+        return 100;
+    }
+    return value;
+}
+
 } // namespace
 
 const char *eventTypeName(EventType type) {
@@ -167,6 +177,40 @@ std::string formatIso8601(long long utcSeconds) {
 long long utcNowSeconds() {
     using namespace std::chrono;
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
+}
+
+double hueForImportance(int importance) {
+    const double t = clampTo100(importance) / 100.0;
+    return kImportanceLowHue + (kImportanceHighHue - kImportanceLowHue) * t;
+}
+
+double borderFactorForUrgency(int urgency) { return clampTo100(urgency) / 100.0; }
+
+EventStyle styleFor(const Event &event) {
+    EventStyle style;
+    style.hue = hueForImportance(event.importance);
+    style.borderFactor = borderFactorForUrgency(event.urgency);
+    return style;
+}
+
+int weekdayUtc(long long utcSeconds) {
+    // 1970-01-01 was a Thursday, which is 4 with Sunday == 0.
+    const long long days = floorDiv(utcSeconds, 86400);
+    return static_cast<int>(floorMod(days + 4, 7));
+}
+
+long long startOfWeekUtc(long long utcSeconds) {
+    const long long days = floorDiv(utcSeconds, 86400);
+    return (days - weekdayUtc(utcSeconds)) * 86400;
+}
+
+std::vector<long long> alarmTriggersUtc(const Event &event) {
+    std::vector<long long> triggers;
+    if (event.alarmOffset != 0) {
+        triggers.push_back(event.startUtc - event.alarmOffset);
+    }
+    triggers.push_back(event.startUtc);
+    return triggers;
 }
 
 } // namespace klend_ario

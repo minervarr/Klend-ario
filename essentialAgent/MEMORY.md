@@ -104,6 +104,11 @@ These are truths this workspace already paid for. Do not relearn them.
 - **Shared libraries are consumed by `add_subdirectory`, never packaged.**
   `archive_engine`, `app_shell`, `vk_canvas` are all pinned submodules. A change
   to one is pushed there first, then the pin advanced here.
+- **Migrations are additive and refused in the wrong direction.** The schema
+  version lives in `meta.schema_version` and is checked on every open. Steps run
+  upward only, in order. A database written by a *newer* build is **refused**
+  rather than opened and quietly misread — forward compatibility is not ours to
+  guess, and a silently wrong calendar is worse than a startup error.
 - **A calendar stores instants, not wall-clock readings.** `events.start_utc`/
   `end_utc` are Unix seconds UTC, and the ISO-8601 parser/formatter is strict and
   UTC-only (`Z`) on purpose: a silently reinterpreted date is worse than a
