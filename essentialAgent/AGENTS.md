@@ -24,6 +24,7 @@ Klend-ario/
 │   └── thirdparty/               # vendored deps (sqlite3mc amalgamation)
 ├── core/                         # ALL logic. portable. include/ src/ tests/
 ├── cli/                          # the MVP frontend. links core.
+├── mcp/                          # the local MCP server (links core)
 ├── android/                      # later: JNI + gradle (see MEMORY §5)
 ├── gui/                          # later: vk_canvas + app_shell
 ├── assets/fonts/                 # submodule

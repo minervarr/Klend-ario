@@ -14,7 +14,7 @@ as work lands; this file is the tracker.*
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **in progress** — geometry done; renderer pending SDK |
-| 5 | MCP server — local, read/write, minimal tool surface, tiers | not started |
+| 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
 | 6 | Alarms — libnotify + PipeWire / Android native | not started |
 | 7 | Android platform layer + storage permissions | not started |
 
@@ -95,6 +95,17 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 5 complete — the MCP server exists and works.** New frontend `mcp/`
+  (targets `klend_ario_mcp`, `klend_ario_mcp_server`): JSON-RPC over stdio, one
+  message per line, the five tools from `merged.md` §7, and read/write/
+  destructive permission tiers configurable with `--permissions`. JSON is
+  hand-rolled (`mcp/src/json.*`) because the dependency rule allows no JSON
+  library. It opens the database through core, with the same `--key-file` /
+  `$KLEND_ARIO_KEY` handling as the CLI. Tests: `json_test` (parser/serializer,
+  escapes, depth/format errors) and `server_test` (initialize, tools/list, all
+  five tools over an in-memory DB, tier denial, protocol errors). Verified by
+  hand over real stdio as well.
 
 - **Phase 4 started — the weekly view's geometry is done and tested.**
   `gui/src/week_layout.{hh,cc}` (target `klend_ario_view`) computes the frame

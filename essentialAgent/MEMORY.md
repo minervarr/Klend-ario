@@ -181,3 +181,22 @@ enough to keep, because both were decided against an obvious alternative.
   itself.
 - A conflict copy is a **separate file**, never opened or read; resolving one is
   a human's call (rename it in, or delete it).
+
+## 8. MCP (Phase 5)
+
+- **stdio, one JSON-RPC message per line.** Transport is MCP's `command` kind:
+  the host spawns `klend_ario_mcp_server` and speaks over stdin/stdout. **stdout
+  carries protocol frames and nothing else** — a stray `printf` corrupts the
+  session, so logging goes to stderr or nowhere.
+- **Five tools, no more** (`merged.md` §7): `list_events`, `get_event`,
+  `create_event`, `update_event`, `delete_event`. Context tokens are the cost
+  model, so the surface stays small and the payloads stay shaped.
+- **Permission tiers are real from day one** — `read` / `write` /
+  `destructive`, set with `--permissions`. All default on, but the split exists
+  now so restricting a deployment later is configuration, not a refactor.
+- **JSON is hand-rolled** (`mcp/src/json.*`). The dependency rule allows no JSON
+  library, and MCP's payloads are a small subset of the grammar — so it is a
+  subset, depth-capped against a hostile payload, and asserted in `json_test`.
+- The server is a **frontend**: it links core, opens the database through `Db`,
+  and never reaches past it. `update_event` is the user-facing path for the
+  `Db::updateEvent` added in Phase 1.
