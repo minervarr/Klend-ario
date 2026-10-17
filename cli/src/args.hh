@@ -35,6 +35,8 @@ enum class Verb {
     Alarms,
     Stats,
     Doctor,
+    Export,
+    Completion,
     Show,
     Remove,
     Holidays,
@@ -42,14 +44,16 @@ enum class Verb {
 
 struct Args {
     Verb verb = Verb::None;
-    std::string helpTopic; // for `help edit` / `edit --help`
+    std::string helpTopic;       // for `help edit` / `edit --help`
+    std::string completionShell; // bash|zsh|fish for `completion`
 
     // Common
     std::string dbPath;  // empty => the caller uses the state-layout default
     std::string keyFile; // empty => no --key-file; $KLEND_ARIO_KEY may be used
     bool json = false;   // legacy alias for --format json
     std::string format = "text";
-    bool noHeader = false; // suppress the header row of csv/tsv/table
+    bool formatGiven = false; // export/import need a different default than text
+    bool noHeader = false;    // suppress the header row of csv/tsv/table
 
     // add / edit / duplicate
     std::string title;

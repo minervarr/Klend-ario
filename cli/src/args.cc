@@ -66,6 +66,10 @@ const char *verbName(Verb verb) {
         return "stats";
     case Verb::Doctor:
         return "doctor";
+    case Verb::Export:
+        return "export";
+    case Verb::Completion:
+        return "completion";
     case Verb::Show:
         return "show";
     case Verb::Remove:
@@ -97,7 +101,9 @@ bool isIntelligenceVerb(Verb verb) {
 
 bool isAnalysisVerb(Verb verb) { return isIntelligenceVerb(verb) || verb == Verb::Stats; }
 
-bool isRangeVerb(Verb verb) { return isQueryVerb(verb) || isAnalysisVerb(verb); }
+bool isRangeVerb(Verb verb) {
+    return isQueryVerb(verb) || isAnalysisVerb(verb) || verb == Verb::Export;
+}
 
 bool isVisibilityVerb(Verb verb) { return isRangeVerb(verb); }
 
@@ -105,7 +111,7 @@ bool isLimitVerb(Verb verb) { return isQueryVerb(verb) || isIntelligenceVerb(ver
 
 bool isTypeVerb(Verb verb) {
     return verb == Verb::Add || verb == Verb::Edit || isQueryVerb(verb) ||
-           isAnalysisVerb(verb);
+           isAnalysisVerb(verb) || verb == Verb::Export;
 }
 
 } // namespace
@@ -153,6 +159,10 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             a.verb = Verb::Stats;
         } else if (verb == "doctor") {
             a.verb = Verb::Doctor;
+        } else if (verb == "export") {
+            a.verb = Verb::Export;
+        } else if (verb == "completion") {
+            a.verb = Verb::Completion;
         } else if (verb == "show") {
             a.verb = Verb::Show;
         } else if (verb == "rm" || verb == "remove") {
@@ -273,6 +283,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!takeValue(a.format, "--format")) {
                 return a;
             }
+            a.formatGiven = true;
         } else if (token == "--title") {
             if (!mutationOnly("--title")) {
                 return a;
@@ -539,6 +550,12 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.title = std::string(token);
             a.titleGiven = true;
+        } else if (a.verb == Verb::Completion) {
+            if (!a.completionShell.empty()) {
+                a.error = "completion takes exactly one shell name (bash|zsh|fish)";
+                return a;
+            }
+            a.completionShell = std::string(token);
         } else {
             a.error = "unexpected argument: " + std::string(token);
             return a;
@@ -568,6 +585,8 @@ std::string usage() {
            "  alarms     list upcoming alarm triggers\n"
            "  stats      summarize a set of events\n"
            "  doctor     check the database's health (read-only)\n"
+           "  export     write events as csv, jsonl or ics\n"
+           "  completion print a shell completion script\n"
            "  show       show one event by id\n"
            "  rm         delete one event by id\n"
            "  holidays   list a country's public holidays for a year\n"
@@ -594,12 +613,19 @@ std::string usage() {
            "stats takes --from/--to, --type and the visibility flags; doctor\n"
            "takes only --db/--key-file/--format and never writes.\n"
            "\n"
+           "export options (export):\n"
+           "  --format FMT       csv|jsonl|ics (default csv)\n"
+           "  --from EXPR --to EXPR  --type T\n"
+           "  --visible | --hidden-only | --include-hidden\n"
+           "  all time and all rows by default; writes to stdout\n"
+           "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"
            "  --key-file PATH    read the database passphrase from this file\n"
            "                     (else $KLEND_ARIO_KEY; else plaintext)\n"
-           "  --format FMT       text|table|json|csv|tsv (default text)\n"
-           "  --json             same as --format json\n"
+           "  --format FMT       text|table|json|csv|tsv (default text;\n"
+           "                     export uses csv|jsonl|ics)\n"
+           "  --json             same as --format json (jsonl for export)\n"
            "  --no-header        omit the header row of csv/tsv/table\n"
            "  -h, --help         this text\n"
            "\n"
@@ -741,6 +767,21 @@ std::string usageFor(std::string_view topic) {
                "  Read-only health report: SQLite integrity, schema version,\n"
                "  modified_utc marker, Syncthing conflict copies, event intervals.\n"
                "  Exits 0 when every check is ok, 1 when anything is warn/fail.\n";
+    }
+    if (topic == "export") {
+        return "usage: klend_ario_cli export [--format csv|jsonl|ics] [--from EXPR]\n"
+               "                              [--to EXPR] [--type T]\n"
+               "                              [--visible | --hidden-only | --include-hidden]\n"
+               "\n"
+               "  Writes to stdout. CSV and JSONL are lossless (all fields); ICS is\n"
+               "  one-way interoperability, with a VALARM for the offset. Defaults to\n"
+               "  all time, all rows and csv. Use `> file` to save it.\n";
+    }
+    if (topic == "completion") {
+        return "usage: klend_ario_cli completion bash|zsh|fish\n"
+               "\n"
+               "  Prints a completion script to stdout; source it from your shell's\n"
+               "  startup file. It does not open the database.\n";
     }
     if (topic == "show") {
         return "usage: klend_ario_cli show <id>\n";

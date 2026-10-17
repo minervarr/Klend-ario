@@ -6,7 +6,8 @@ add_executable(klend_ario_cli
     src/main.cc
     src/args.cc
     src/commands.cc
-    src/format.cc)
+    src/format.cc
+    src/completion.cc)
 
 target_link_libraries(klend_ario_cli PRIVATE klend_ario_core)
 
@@ -42,6 +43,11 @@ klend_ario_add_test(format_test
 # would fail if a verb stopped reaching core.
 # ---------------------------------------------------------------------------
 klend_ario_add_test(e2e_test
-    SOURCES  tests/e2e_test.cc src/args.cc src/commands.cc src/format.cc
+    SOURCES  tests/e2e_test.cc src/args.cc src/commands.cc src/format.cc src/completion.cc
     INCLUDES src
     LIBS     klend_ario_core)
+
+# completion_test — the three scripts alone. No core, no database, no shell.
+klend_ario_add_test(completion_test
+    SOURCES  tests/completion_test.cc src/completion.cc
+    INCLUDES src)

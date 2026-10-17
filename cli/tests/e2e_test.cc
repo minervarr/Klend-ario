@@ -607,6 +607,71 @@ int main() {
     assert(run({"stats", "--db", intelDb, "--sort", "start"}) == kExitUsage);
     assert(run({"doctor", "--db", intelDb, "--from", "today"}) == kExitUsage);
 
+    // ---------------------------------------------------------------------
+    // Stage 6a: export and shell completion.
+    // ---------------------------------------------------------------------
+#ifndef _WIN32
+    {
+        const Capture csv = runCaptured({"export", "--db", intelDb, "--format", "csv"});
+        assert(csv.code == kExitOk);
+        assert(countLines(csv.output) == 8); // header + 7 events
+        assert(csv.output.rfind("id,title,start,end,type,importance,urgency,alarm_offset,"
+                                "hidden,notes,created_utc,updated_utc\n",
+                                0) == 0);
+        assert(csv.output.find("1,A,2026-10-16T09:00:00Z,2026-10-16T10:00:00Z,"
+                               "event,50,50,0,false,") != std::string::npos);
+    }
+    {
+        // Export is data access: hidden rows are included unless filtered.
+        const Capture visible =
+            runCaptured({"export", "--db", intelDb, "--visible", "--format", "csv"});
+        assert(visible.code == kExitOk);
+        assert(countLines(visible.output) == 6); // header + 5 visible rows
+        assert(visible.output.find("Sleep") == std::string::npos);
+    }
+    {
+        const Capture jsonl = runCaptured({"export", "--db", intelDb, "--json"});
+        assert(jsonl.code == kExitOk);
+        assert(countLines(jsonl.output) == 7);
+        assert(jsonl.output.find("\"title\":\"A\"") != std::string::npos);
+        assert(jsonl.output.find("\"hidden\":true") != std::string::npos);
+    }
+    {
+        const Capture ics = runCaptured({"export", "--db", intelDb, "--format", "ics"});
+        assert(ics.code == kExitOk);
+        assert(ics.output.find("BEGIN:VCALENDAR\r\n") != std::string::npos);
+        assert(ics.output.find("UID:klend-ario-7@klend-ario.invalid\r\n") !=
+               std::string::npos);
+        assert(ics.output.find("SUMMARY:Sleepy\r\n") != std::string::npos);
+        assert(ics.output.find("X-KLEND-ARIO-HIDDEN:TRUE\r\n") != std::string::npos);
+        assert(ics.output.find("TRIGGER:-PT5M\r\n") != std::string::npos);
+        assert(ics.output.find("TRIGGER:-PT10M\r\n") != std::string::npos);
+    }
+    {
+        const Capture ranged = runCaptured(
+            {"export", "--db", intelDb, "--from", "2026-10-16T13:00:00Z", "--to",
+             "2026-10-16T15:00:00Z", "--type", "event", "--format", "csv"});
+        assert(ranged.code == kExitOk);
+        assert(countLines(ranged.output) == 2); // header + Timed
+        assert(ranged.output.find("6,Timed,") != std::string::npos);
+        assert(ranged.output.find("1,A,") == std::string::npos);
+    }
+    {
+        const Capture bash = runCaptured({"completion", "bash"});
+        assert(bash.code == kExitOk);
+        assert(bash.output.find("complete -F _klend_ario_cli klend_ario_cli\n") !=
+               std::string::npos);
+        assert(bash.output.find("export") != std::string::npos);
+    }
+#endif
+
+    assert(run({"export", "--db", intelDb}) == kExitOk);
+    assert(run({"export", "--db", intelDb, "--format", "xml"}) == kExitUsage);
+    assert(run({"export", "--db", intelDb, "--limit", "1"}) == kExitUsage);
+    assert(run({"completion"}) == kExitUsage);
+    assert(run({"completion", "tcsh"}) == kExitUsage);
+    assert(run({"completion", "bash", "zsh"}) == kExitUsage);
+
     std::remove(intelDb);
 
     // ---------------------------------------------------------------------

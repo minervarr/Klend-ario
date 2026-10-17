@@ -77,9 +77,11 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Free-slot intervals (`freeSlots`) | `core/tests/free_test.cc` | `src/free.cc src/event.cc` | none |
 | Summary counts (`computeStats`) | `core/tests/stats_test.cc` | `src/stats.cc src/conflict.cc src/event.cc` | none |
 | Doctor checks (`diagnose`, `integrityCheck`) | `core/tests/diagnostics_test.cc` | `src/diagnostics.cc src/db.cc src/schema.cc src/query.cc src/conflict.cc src/sync.cc` + `sqlite3` | in-memory DB |
+| Interchange export (`exportEvents`) | `core/tests/export_test.cc` | `src/export.cc src/event.cc` | none |
+| Shell completion scripts | `cli/tests/completion_test.cc` | `completion.cc` only | none |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
-| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
+| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`export`/`completion`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`/`completion`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 ### Time and day model
@@ -174,6 +176,25 @@ doctor over an in-memory database:
   asserts the report names it and the exit code changes; this is what caught
   the empty-parent bug in `syncConflictCopies`.
 
+### CLI export and completion
+
+`export_test` pins the interchange bytes without a database:
+
+- CSV is RFC 4180: a field with `,`, `"` or a newline is quoted, embedded quotes
+  are doubled, and the header is the full 12-column export shape.
+- JSONL is one compact object per line; all strings are escaped, and timestamps
+  are ISO-8601 UTC (the `created_utc`/`updated_utc` fields are integers).
+- ICS uses CRLF, escapes `\ ; ,` and newlines, folds at 75 octets (backing off a
+  UTF-8 continuation byte), and emits `VALARM` only for a non-zero offset. The
+  sign flips correctly: `alarm_offset = 600` is `TRIGGER:-PT10M`, `-300` is
+  `TRIGGER:PT5M`.
+- An empty export is still a valid document: a CSV header, zero JSONL lines, or
+  an empty VCALENDAR.
+
+`completion_test` pins the three scripts and their verb list. The CLI is one
+binary, so the list is static; if a verb is added, update `completion.cc` and
+the test together.
+
 ### CLI rendering
 
 `format_test` asserts the actual bytes for every format, so the user-visible
@@ -192,7 +213,7 @@ DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 25 suites, not 11. The CLI's
+That is why the parent currently reports 27 suites, not 11. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

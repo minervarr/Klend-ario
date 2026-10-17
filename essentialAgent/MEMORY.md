@@ -105,6 +105,8 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI alarms | Upcoming T-offset + T=0 triggers, sorted by fire time. **Hidden rows are included by default**: `hidden` is a weekly-view choice, not a schedule cancellation. Events are scanned unbounded because an offset can move a trigger outside the event's own range |
 | CLI stats | Default all time / all rows; `--from`/`--to`/`--type`/visibility narrow the set. `scheduled_seconds` is a **sum**, so overlaps double-count; `conflict_pairs` says how many overlaps exist. Alarm rows count in totals but not conflicts |
 | CLI doctor | Read-only. Checks integrity, schema version, `modified_utc`, Syncthing copies and interval sanity; exit `1` on any warn/fail. It never migrates, fixes, or deletes |
+| CLI export | Data access, not a view: all time/all rows by default, hidden included, stdout. `--format` is verb-scoped: `csv|jsonl|ics` (default csv). CSV/JSONL are the lossless interchange shapes; ICS is one-way |
+| CLI completion | `completion bash|zsh|fish` prints a static script. The CLI is one binary, so completion must work from a fresh checkout without an install step |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
@@ -213,6 +215,18 @@ These are truths this workspace already paid for. Do not relearn them.
 - **A doctor must be read-only.** `diagnose` never migrates or repairs: a user
   runs it to decide what to do. The exit code is the script contract (`0` all
   ok, `1` warn/fail), and the report names the file/paths a human must look at.
+- **Export is not display.** `list --format csv` is a compact human table;
+  `export` is a stable interchange contract with every stored field. They are
+  allowed to differ, and `core/export` must not depend on `cli/format`.
+  `--format` is therefore verb-scoped: display formats for views, `csv|jsonl|ics`
+  for export.
+- **ICS is one-way.** Export writes UTC VEVENTs, a `VALARM` for the T-offset,
+  and RFC 5545 escaping/folding. Importing arbitrary ICS (timezones, recurrence,
+  attendees) is a different, much larger problem; do not pretend the exporter
+  is a parser.
+- **Completion is generated, not installed.** `completion bash|zsh|fish` prints
+  a static script to stdout so a fresh checkout works without a setup step. The
+  verb list is duplicated by necessity; `completion_test` pins the surface.
 - **Migrations are additive and refused in the wrong direction.** The schema
   version lives in `meta.schema_version` and is checked on every open. Steps run
   upward only, in order. A database written by a *newer* build is **refused**

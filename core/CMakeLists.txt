@@ -26,6 +26,7 @@ add_library(klend_ario_core STATIC
     src/free.cc
     src/stats.cc
     src/diagnostics.cc
+    src/export.cc
     src/alarm.cc
     src/sync.cc
     src/holidays.cc)
@@ -103,6 +104,12 @@ klend_ario_add_test(diagnostics_test
              src/event.cc src/query.cc src/conflict.cc src/sync.cc
     INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
     LIBS     sqlite3mc arc_fs arc_util)
+
+# export_test — the interchange bytes, without a database or a clock. It is
+# deliberately a separate contract from the display formatters in cli/format.
+klend_ario_add_test(export_test
+    SOURCES  tests/export_test.cc src/export.cc src/event.cc
+    INCLUDES include)
 
 # sync_test — the pure half of the Syncthing conflict policy. Links sync.cc and
 # arc_fs (for the directory listing) and opens nothing.

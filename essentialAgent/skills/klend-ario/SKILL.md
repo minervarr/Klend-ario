@@ -81,6 +81,9 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
 - **Interval intelligence stays pure.** `findConflicts`/`freeSlots` take a
   vector of events, not a database. Alarm rows are reminders, not blocks; a
   hidden row still fires its alarm.
+- **Export is not display.** `core/export` owns CSV/JSONL/ICS as a stable
+  interchange contract; `cli/format.cc` stays the compact view renderer. ICS is
+  one-way; do not grow an ICS parser out of the exporter.
 - **No speculative storage rewrite.** SQLite stays until a benchmark proves a
   JSON store faster on the real operations; encryption is not a blocker.
 - **Captured ≠ built.** Notes, the 10 h sleep scheduler, G-SHOCK sync, and NTP

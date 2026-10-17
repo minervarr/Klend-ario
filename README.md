@@ -56,6 +56,9 @@ ctest --test-dir build --output-on-failure
 ./build/cli/klend_ario_cli alarms --limit 5
 ./build/cli/klend_ario_cli stats
 ./build/cli/klend_ario_cli doctor
+./build/cli/klend_ario_cli export --format csv > backup.csv
+./build/cli/klend_ario_cli export --format ics > calendar.ics
+./build/cli/klend_ario_cli completion bash
 ./build/cli/klend_ario_cli list --from today --to today+7d --min-importance 70
 ./build/cli/klend_ario_cli edit 1 --shift 1h
 ./build/cli/klend_ario_cli holidays --year 2026 --format csv
@@ -63,8 +66,9 @@ ctest --test-dir build --output-on-failure
 
 Instants are UTC. Absolute ISO-8601 (`2026-10-16T09:00:00Z`), date-only
 (`2026-10-16`), relative words (`now`, `today`, `tomorrow`, `week`,
-`sunday..saturday`) and offsets (`today+2h`, `+90m`) all work. `--format` is
-`text`, `table`, `json`, `csv`, or `tsv`; `--json` remains an alias.
+`sunday..saturday`) and offsets (`today+2h`, `+90m`) all work. For views,
+`--format` is `text`, `table`, `json`, `csv`, or `tsv`; `--json` remains an
+alias.
 
 `today`, `week`, `next` and `agenda` show visible rows by default (hidden sleep
 blocks stay out of the view); `list` and `search` include them so they can be
@@ -81,6 +85,11 @@ weekly view does not cancel its wake-up.
 `stats` summarizes all rows by default (narrow with `--from`/`--to`/`--type`);
 `doctor` is a read-only health report and exits `1` when it finds a warning
 (Syncthing conflict copy, missing marker, bad schema version, or corrupt data).
+
+`export` writes stdout, all rows and all time by default. Its `--format` is
+`csv`, `jsonl`, or `ics`: CSV/JSONL carry every stored field, while ICS is
+one-way interoperability (UTC events, a `VALARM` for the offset). `completion
+bash|zsh|fish` prints a script for your shell.
 
 ## Layout
 

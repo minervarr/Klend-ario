@@ -37,6 +37,8 @@ void testVerbs() {
     assert(parse({"alarms"}).verb == Verb::Alarms);
     assert(parse({"stats"}).verb == Verb::Stats);
     assert(parse({"doctor"}).verb == Verb::Doctor);
+    assert(parse({"export"}).verb == Verb::Export);
+    assert(parse({"completion"}).verb == Verb::Completion);
     assert(parse({"show"}).verb == Verb::Show);
     assert(parse({"rm"}).verb == Verb::Remove);
     assert(parse({"remove"}).verb == Verb::Remove);
@@ -204,6 +206,35 @@ void testIntelligenceFlags() {
     assert(!parse({"conflicts", "--search", "x"}).error.empty());
     assert(!parse({"conflicts", "--offset", "1"}).error.empty());
     assert(!parse({"show", "5", "--type", "sleep"}).error.empty());
+}
+
+void testExportAndCompletionFlags() {
+    const Args exportArgs =
+        parse({"export", "--format", "ics", "--from", "today", "--to", "tomorrow", "--type",
+               "sleep", "--visible"});
+    assert(exportArgs.error.empty());
+    assert(exportArgs.verb == Verb::Export);
+    assert(exportArgs.formatGiven && exportArgs.format == "ics");
+    assert(exportArgs.fromGiven && exportArgs.from == "today");
+    assert(exportArgs.toGiven && exportArgs.to == "tomorrow");
+    assert(exportArgs.typeGiven && exportArgs.type == "sleep");
+    assert(exportArgs.visibleOnly);
+
+    const Args jsonExport = parse({"export", "--json"});
+    assert(jsonExport.error.empty());
+    assert(jsonExport.json);
+
+    // Export is a data verb, not a paginated query.
+    assert(!parse({"export", "--limit", "1"}).error.empty());
+    assert(!parse({"export", "--sort", "start"}).error.empty());
+    assert(!parse({"export", "--search", "x"}).error.empty());
+
+    const Args bash = parse({"completion", "bash"});
+    assert(bash.error.empty());
+    assert(bash.verb == Verb::Completion);
+    assert(bash.completionShell == "bash");
+    assert(parse({"completion"}).completionShell.empty());
+    assert(!parse({"completion", "bash", "zsh"}).error.empty());
 }
 
 void testStatsAndDoctorFlags() {
@@ -389,6 +420,7 @@ int main() {
     testSearchPositional();
     testQueryOnlyFlagsRejectedOnMutation();
     testIntelligenceFlags();
+    testExportAndCompletionFlags();
     testStatsAndDoctorFlags();
     testHolidaysVerb();
     testUsageErrors();
