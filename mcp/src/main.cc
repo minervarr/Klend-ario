@@ -108,17 +108,26 @@ int main(int argc, char **argv) {
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
-        auto takeValue = [&](std::string &slot) {
-            if (i + 1 < argc) {
-                slot = argv[++i];
+        auto takeValue = [&](const char *name, std::string &slot) {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "error: %s needs a value\n", name);
+                return false;
             }
+            slot = argv[++i];
+            return true;
         };
         if (arg == "--db") {
-            takeValue(dbPath);
+            if (!takeValue("--db", dbPath)) {
+                return 2;
+            }
         } else if (arg == "--key-file") {
-            takeValue(keyFile);
+            if (!takeValue("--key-file", keyFile)) {
+                return 2;
+            }
         } else if (arg == "--permissions") {
-            takeValue(permissions);
+            if (!takeValue("--permissions", permissions)) {
+                return 2;
+            }
         } else if (arg == "-h" || arg == "--help") {
             std::fputs(kUsage, stdout);
             return 0;

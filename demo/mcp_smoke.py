@@ -687,6 +687,17 @@ def check_server_options(harness: Harness) -> None:
     harness.ok("--permissions: an unknown token is a usage error")
 
     completed = subprocess.run(
+        [str(harness.server), "--db"],
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=harness.timeout,
+    )
+    expect(completed.returncode == 2, f"--db without a value exited {completed.returncode}")
+    expect("needs a value" in completed.stderr, f"unexpected stderr: {completed.stderr!r}")
+    harness.ok("--db: a missing value is a usage error")
+
+    completed = subprocess.run(
         [str(harness.server), "--version"],
         input="",
         capture_output=True,
