@@ -54,6 +54,10 @@ Klend-ario/
 7. **Only std, plus the C `sqlite3` API (via the vendored SQLite3MultipleCiphers),
    plus our first-party `pe_holiday_calc`, plus `arc_fs`/`arc_util`.** Adding a
    third-party dependency is a decision to write in `MEMORY.md` first.
+8. **Holidays have one source.** Consume them through core
+   (`klend_ario/holidays.hh`: `holidaysFor`, `isHoliday`, `holidayOn`), never by
+   including the library's registry from a frontend. A frontend never gets its
+   own holiday table.
 
 ## 3. Build & test
 
@@ -88,6 +92,10 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
 - **Sources** in `core/src/`. Small files, one job each.
 - **SQL** lives in `core/sql/schema.sql`, embedded at configure time. Migrations
   are additive and versioned in a `meta` table.
+- **Holidays** are civil dates, not instants: use `holidays::Date`, never a
+  timezone or `<ctime>`. `holidaysFor`/`isHoliday` treat an unknown country as
+  `Err`, while "that day is not a holiday" is `Ok` (and `Ok(nullopt)` for
+  `holidayOn`). Do not copy the Peru calendar into `core/`.
 - **CLI** is a thin shell: parse args → call a core function → print. No business
   logic in `cli/`.
 - Every comment that explains a *surprising* choice is worth its weight. Every
@@ -112,6 +120,7 @@ A change is done when:
 - `./git_wrapper save "message"` = commit + push in one step.
 - If a **submodule** changed, it must be pushed (in the submodule) before the
   parent pin is advanced. `git_wrapper push` does this in the correct order.
+  This applies to `pe-holiday-calc` exactly as it does to `archive_engine`.
 - No generated files, `build/`, or `*.pyz` in the index.
 
 ## 7. Do not
@@ -123,3 +132,6 @@ A change is done when:
 - Do not edit `libs/firstparty/archive_engine` to make this app's life easier
   without recording the change in `MEMORY.md` and pushing it there first — it is
   shared with Matrix_Player and the streamer.
+- Do not edit `libs/firstparty/pe-holiday-calc` from here either. It is its own
+  repository with its own `essentialAgent/`; a change there is made, tested, and
+  pushed in the child, then its pin is advanced here.

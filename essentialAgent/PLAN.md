@@ -92,6 +92,24 @@ ctest --test-dir build --output-on-failure      # all pass
 
 ---
 
+## Holidays in core (first-party library)
+
+- [x] `libs/firstparty/pe-holiday-calc` registered in `.gitmodules` (Codeberg,
+      pinned to the child's `master`).
+- [x] Root `CMakeLists.txt` adds the module with `PE_HOLIDAY_BUILD_TESTS` ON and
+      `PE_HOLIDAY_BUILD_EXAMPLES` OFF; `klend_ario_core` links `pe_holiday_calc`
+      PUBLIC (the adapter header exposes its `Holiday`/`Date` types).
+- [x] `core/include/klend_ario/holidays.hh` + `core/src/holidays.cc` adapt the
+      library's `std::optional` answers to `arc::Result`.
+- [x] `core/tests/holidays_test.cc` asserts a known 2026 Peru calendar,
+      case/trimmed lookup, the *día no laborable* negative, and the
+      unknown-country error.
+- [x] The child's seven suites run through the parent's CTest (18 suites
+      total), so a parent `ctest` also protects the library.
+- [ ] Android NDK build of the child — open; no NDK/SDK in this environment.
+
+---
+
 ## Status log
 
 Newest first. One line per meaningful change.

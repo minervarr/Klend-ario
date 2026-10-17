@@ -14,6 +14,9 @@ live in `essentialAgent/AGENTS.md`; this is the step-by-step procedure.
    `essentialAgent/AGENTS.md` (invariants).
 2. Check `essentialAgent/PLAN.md` for the current phase. Do not build ahead of
    it without being asked.
+3. Decide which repo owns the change: application behaviour goes in `core/`;
+   holiday **data or rules** belong in `libs/firstparty/pe-holiday-calc`, whose
+   own `essentialAgent/` governs it. Never edit the submodule from the parent.
 
 ## Build & test loop
 
@@ -56,5 +59,8 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
 - Do not edit `libs/firstparty/archive_engine` for our convenience — it is shared
   with Matrix_Player and the streamer. If a real gap appears, note it in
   `MEMORY.md` and push there first.
+- Do not duplicate holiday logic. Query through `klend_ario/holidays.hh`; keep
+  civil-date math in the submodule, and remember that an unknown country is
+  `Err` while "no holiday today" is `Ok(nullopt)`.
 - Do not add a dependency without recording the decision.
 - Do not start the GUI, MCP, or encryption before their phase.

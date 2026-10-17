@@ -15,6 +15,10 @@ The non-negotiables, so they apply even before you read further:
 - **CMake + Ninja only.** Tests are plain `assert()` binaries registered with
   CTest, Debug-only.
 - **Errors are `arc::Result<T>` values**, not exceptions across modules.
+- **Holidays come from `pe_holiday_calc`** — the first-party submodule at
+  `libs/firstparty/pe-holiday-calc`. Core exposes them through
+  `klend_ario/holidays.hh` and adapts `std::optional` to `arc::Result`; never
+  duplicate date math, and never edit the submodule from the parent.
 - **Commit/push with `./git_wrapper`** — submodules first, single identity, no
   `Co-Authored-By` trailers.
 - **Stay in the current phase.** See `essentialAgent/PLAN.md`.

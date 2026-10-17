@@ -65,7 +65,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | DB location | `arc::fs::Layout.state` — machine data, never `home`/`data` |
 | Error type | `arc::Result<T>` / `arc::Error` from `arc_util` |
 | `archive_engine` | git submodule at `libs/firstparty/archive_engine` |
-| `pe-holiday-calc` | git submodule at `libs/firstparty/pe-holiday-calc` (Codeberg, pinned to the child's `master`); first-party C++17 holiday library. `klend_ario_core` links `pe_holiday_calc` and adapts its `std::optional` answers to `arc::Result` in `core/src/holidays.cc` |
+| `pe-holiday-calc` | git submodule at `libs/firstparty/pe-holiday-calc` (Codeberg, pinned to the child's `master`); first-party C++17 holiday library, built with `add_subdirectory` (tests ON, example OFF). `klend_ario_core` links `pe_holiday_calc`; `core/src/holidays.cc` adapts its `std::optional` answers to `arc::Result` behind `core/include/klend_ario/holidays.hh` |
 | Tests | plain `assert()` binaries, registered with **CTest** |
 | CLI parsing | hand-rolled, `std::string_view` + `std::vector`, std-only |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
@@ -103,8 +103,14 @@ These are truths this workspace already paid for. Do not relearn them.
   the remote must already have. `./git_wrapper` enforces the order; a manual
   `git push` in the wrong order is how clones break.
 - **Shared libraries are consumed by `add_subdirectory`, never packaged.**
-  `archive_engine`, `app_shell`, `vk_canvas` are all pinned submodules. A change
-  to one is pushed there first, then the pin advanced here.
+  `archive_engine`, `pe_holiday_calc`, `app_shell`, `vk_canvas` are all pinned
+  submodules. A change to one is pushed there first, then the pin advanced here.
+- **A bare `std::optional` collapses two different answers.** The holiday
+  library uses `nullopt` for both "unknown country" and "not a holiday today".
+  `core/src/holidays.cc` resolves the provider first, so core can return `Err`
+  for an unknown country and still return `Ok(nullopt)` for a valid day with no
+  holiday — a frontend must be able to tell "I don't know that country" from
+  "nothing special today".
 - **View geometry is pure, and pure geometry is tested.** The weekly view's
   layout (`gui/src/week_layout.*`) takes pixels and instants and returns
   rectangles — no Canvas, no OS, no window. That is what lets it be asserted
@@ -138,6 +144,9 @@ These are truths this workspace already paid for. Do not relearn them.
 
 - **`arc_fs`** — `archive_engine`'s storage module: paths, layout, non-throwing
   walk, `listDir`, volume access mode. We consume only this module.
+- **`pe_holiday_calc`** — the first-party Peru-holiday library
+  (`libs/firstparty/pe-holiday-calc`). Core wraps its registry behind
+  `klend_ario/holidays.hh` so callers see `arc::Result`, not `std::optional`.
 - **`app_shell`** — the Host/AppView seam and per-app paths/metrics, lifted out
   of Matrix_Player. Relevant at Phase 4, not before.
 - **`vk_canvas`** — the Vulkan 2D canvas + text engine. The GUI renderer.
