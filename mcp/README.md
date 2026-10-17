@@ -35,6 +35,11 @@ A **read-only** deployment (`--permissions read`) opens the database with
 `Db::openReadOnly`/`Db::openEncryptedReadOnly`: it never creates, migrates or
 writes a file. A missing database is a startup error, not an empty calendar.
 
+Open failures print the same hints as the CLI: a no-key open of an encrypted
+file explains `--key-file` / `$KLEND_ARIO_KEY`, and a read-only failure only
+mentions the read-only mode when no key was supplied (a wrong key is not blamed
+on the permission tier).
+
 ## OpenCode
 
 `merged.md` §7 makes OpenCode the AI client. The repository config

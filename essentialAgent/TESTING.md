@@ -264,7 +264,11 @@ DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 
 `demo/mcp_smoke.py` drives the real binary over newline-delimited JSON-RPC,
 asserts the same surface, and cross-checks the MCP write through the CLI on the
-same database. It is the host-shaped check, not a CTest suite.
+same database. It is the host-shaped check, not a CTest suite. It also covers
+what the in-process test cannot: malformed frame resilience, string ids and
+batching, `--key-file` and `KLEND_ARIO_KEY` encryption, read-only on a
+`chmod 0444` database, the `read,write` middle tier, the missing-database
+contract, option errors, and a strict "no output after stdin close" check.
 
 `holidays_test` tests the **boundary**, not the calendar: the child's own suites
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites

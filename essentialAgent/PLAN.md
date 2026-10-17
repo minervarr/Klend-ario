@@ -152,8 +152,9 @@ and adds no CLI or schema surface.
       output schemas deferred as a recorded decision.
 - [x] **Proof** — `server_test` covers metadata, strict inputs, query
       semantics, tiers and structured content; `demo/mcp_smoke.py` drives the
-      real binary; `opencode.jsonc` registers the server and `opencode mcp list`
-      sees it.
+      real binary including encryption, read-only on a write-protected DB,
+      protocol resilience and option/startup errors; `opencode.jsonc` registers
+      the server and `opencode mcp list` sees it.
 - [x] **Records** — this section, `MEMORY.md` §8, `TESTING.md`, `DEMO.md`, the
       root README and `mcp/README.md` are updated in the same change.
 
@@ -252,6 +253,18 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **MCP smoke hardened (2026-10-17).** `demo/mcp_smoke.py` now covers 66 checks:
+  protocol resilience (malformed/whitespace frames, string ids, batching,
+  unknown methods), query visibility/search/sort/limit, update duration
+  semantics, the default “now”/range, `--key-file` and `KLEND_ARIO_KEY`
+  encryption, read-only on a `chmod 0444` database, the `read,write` middle
+  tier, and option/startup errors. Its line reader has a deadline and a frame
+  cap, `--keep` prints the temp path on failure, every one-shot child uses the
+  cleaned environment and an explicit `--db`, and trailing stdout is now
+  strictly rejected. Companion fix: the MCP prints the CLI’s encrypted-database
+  hint on open failure and no longer blames a supplied wrong key on read-only
+  mode. No submodule change.
 
 - **MCP AI-readiness (2026-10-17).** Hardened Phase 5's surface without adding
   tools: `initialize.instructions`, tool titles/annotations, strict argument

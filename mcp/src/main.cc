@@ -165,7 +165,16 @@ int main(int argc, char **argv) {
                                        : klend_ario::Db::openEncrypted(path, passphrase));
     if (!opened) {
         std::fprintf(stderr, "error: %s\n", opened.error().message.c_str());
-        if (readOnly) {
+        if (passphrase.empty()) {
+            // Same hint the CLI gives: a plaintext open of an encrypted file is
+            // the common mistake, and the SQLite message alone is cryptic.
+            std::fprintf(stderr,
+                         "hint: if the database is encrypted, pass --key-file <path> or set "
+                         "$KLEND_ARIO_KEY\n");
+        }
+        if (readOnly && passphrase.empty()) {
+            // Do not blame a wrong key on the read-only mode; the core error
+            // already says "wrong key" when a key was supplied.
             std::fprintf(stderr,
                          "hint: a read-only server never creates or migrates a database; run a "
                          "write once, or enable the write tier\n");

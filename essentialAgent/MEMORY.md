@@ -403,6 +403,10 @@ enough to keep, because both were decided against an obvious alternative.
 - **OpenCode is wired from the repo.** `opencode.jsonc` registers
   `klend_ario` as a local MCP command with all tiers on. Restrict with
   `--permissions read` (or `read,write`) in the command.
+- **Open failures are diagnosed like the CLI's.** A no-key open of an encrypted
+  database gets the `--key-file` / `$KLEND_ARIO_KEY` hint; the read-only hint
+  fires only when no key was supplied, so a wrong key is never blamed on
+  read-only mode.
 - **Protocol policy: advertise what we implement.** The server says
   `2025-06-18`. MCP `2026-07-28` (`server/discover`, `resultType`, per-request
   `_meta`) is a future adoption with no benefit while OpenCode defaults to the

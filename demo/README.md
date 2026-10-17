@@ -60,10 +60,13 @@ python3 demo/mcp_smoke.py
 
 It asserts the `initialize` handshake and instructions, the five tool schemas
 with titles/annotations, a full create/get/list/update/delete round-trip,
-structured content, strict-input errors, relative time and durations, the
-read-only permission tier (including the tier-filtered `tools/list`), and that
-stdout carries protocol frames and nothing else. When `klend_ario_cli` is built
-it also reads the MCP-written rows through the CLI on the same database,
+structured content, strict-input errors, relative time and durations, query
+visibility/search/sort/limit, update semantics, the default "now"/range,
+protocol resilience (malformed frames, string ids, batching, unknown methods),
+encryption through `--key-file` and `KLEND_ARIO_KEY`, the read-only tier on a
+write-protected database, the `read,write` middle tier, startup options, and
+that stdout carries protocol frames and nothing else. When `klend_ario_cli` is
+built it also reads the MCP-written rows through the CLI on the same database,
 proving both frontends share one SQLite file.
 
 ```bash
