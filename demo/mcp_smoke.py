@@ -8,9 +8,11 @@ database, and then removes every trace:
     ninja -C build
     python3 demo/mcp_smoke.py
 
-It asserts the handshake, the tool schemas, all five tools, the error path, the
-read-only permission tier, stdout purity, and (when the CLI is built) that MCP
-writes are visible through the CLI on the same database.
+It asserts the handshake and instructions, tool schemas with titles/annotations,
+all five tools, structured content, strict input errors, relative time and
+durations, the read-only permission tier (including the tier-filtered
+tools/list), the read-only startup contract, stdout purity, and (when the CLI is
+built) that MCP writes are visible through the CLI on the same database.
 
 Unlike demo/klend_ario_demo.py this is quiet and focused: one line per passing
 check, a non-zero exit on the first failure, and no narration. The contract
