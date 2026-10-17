@@ -183,6 +183,17 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   a merge never silently becomes a restore.
 - **A partial edit changes only supplied flags.** Carry a `*Given` flag in
   `Args` for every editable field; a default value cannot mean "leave alone".
+- **The weekly view is a pure scene plus a dumb adapter.** Geometry in
+  `week_layout`, every visual decision in `scene` (asserted by `scene_test` with
+  an injected `TextMetrics`), and `scene_render` maps ops to `Canvas` calls.
+  Do not put a colour, a label rule or a truncation decision in the renderer.
+- **A local day is `[startUtc, endUtc)`.** The columns are local days and a DST
+  day is 23 or 25 hours; never assume 86,400 s when drawing. `gui/src/local_time`
+  is the only place a timezone is read.
+- **The GUI is read-only until 4b.** It opens with `Db::openReadOnly`/
+  `openEncryptedReadOnly` and notices other processes through
+  `Db::dataVersion()`, polled once a second. Do not add a write path without
+  deciding the edit surface (CLI-parity fields, `*Given` semantics).
 - Every comment that explains a *surprising* choice is worth its weight. Every
   comment that restates the code is noise (`MEMORY.md` §5).
 

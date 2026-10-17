@@ -154,6 +154,50 @@ static void testWeekCounter() {
     assert(weekOfYearUtc(*parseIso8601("2025-12-31T12:00:00Z")).year == 2025);
 }
 
+static void testWeekCounterFromCivilDate() {
+    // The civil-date form must agree with the UTC form for a UTC instant ...
+    assert(weekOfYearFromCivilDate(2026, 1, 1).week == 1);
+    assert(weekOfYearFromCivilDate(2026, 1, 4).week == 2);
+    assert(weekOfYearFromCivilDate(2026, 10, 16).week == 42);
+    assert(weekOfYearFromCivilDate(2025, 12, 31).year == 2025);
+
+    // ... and it is the form a LOCAL week needs. 2026-10-18 is the Sunday that
+    // opens week 43; at UTC+09:00 its local midnight is 2026-10-17T15:00:00Z,
+    // which the UTC week counter still calls week 42 (Saturday). That off-by-one
+    // is exactly why the GUI resolves the local date itself.
+    const long long localSundayMidnight = *parseIso8601("2026-10-17T15:00:00Z");
+    assert(weekOfYearUtc(localSundayMidnight).week == 42);
+    assert(weekOfYearFromCivilDate(2026, 10, 18).week == 43);
+}
+
+static void testStyleToRgb() {
+    // importance 0 is violet, importance 100 is red: at the fixed
+    // saturation/lightness these are the exact bytes the view draws.
+    const Rgb violet = rgbForStyle(EventStyle{kImportanceLowHue, 0.0});
+    assert(violet.r == 117 && violet.g == 33 && violet.b == 202);
+    const Rgb red = rgbForStyle(EventStyle{kImportanceHighHue, 1.0});
+    assert(red.r == 202 && red.g == 33 && red.b == 33);
+
+    // Hue wraps instead of producing a different colour at 0 and 360.
+    const Rgb wrapped = rgbForStyle(EventStyle{-90.0, 0.0});
+    assert(wrapped.r == violet.r && wrapped.g == violet.g && wrapped.b == violet.b);
+
+    // The label colour follows the fill's luminance: violet and red keep a
+    // near-white label, the yellow-green middle switches to near-black.
+    const Rgb onViolet = textColorOn(violet);
+    assert(onViolet.r > 200 && onViolet.g > 200 && onViolet.b > 200);
+    const Rgb onLime = textColorOn(rgbForStyle(EventStyle{90.0, 0.0}));
+    assert(onLime.r < 60 && onLime.g < 60 && onLime.b < 60);
+
+    // importance 50 sits between the endpoints: the hue travels through
+    // magenta, so it must not reproduce either endpoint's colour.
+    Event midEvent;
+    midEvent.importance = 50;
+    const Rgb mid = rgbForStyle(styleFor(midEvent));
+    assert(mid.r != violet.r || mid.b != violet.b);
+    assert(mid.b != red.b || mid.g != red.g);
+}
+
 int main() {
     testIsoRoundTrip();
     testEpochAnchor();
@@ -169,6 +213,8 @@ int main() {
     testWeekdayAndWeekStart();
     testAlarmTriggers();
     testWeekCounter();
+    testWeekCounterFromCivilDate();
+    testStyleToRgb();
     std::printf("event_test: all assertions passed\n");
     return 0;
 }

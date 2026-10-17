@@ -1,0 +1,62 @@
+#pragma once
+
+// The weekly view's chrome: palette and pixel metrics, both pure.
+//
+// Event colours are NOT here — they come from core (`rgbForStyle`), because the
+// printed week and any future preview must colour an event exactly like the
+// screen does. What lives here is only the surrounding furniture: background,
+// grid, header text, the hatched tail, the now-line.
+//
+// Metrics are derived from the content rectangle, never from device pixels or a
+// DPI query, so the view scales with the window and the same numbers can be
+// asserted in a test without a display.
+
+#include "week_layout.hh"
+
+namespace klend_ario::gui {
+
+struct Color {
+    unsigned char r = 0;
+    unsigned char g = 0;
+    unsigned char b = 0;
+    unsigned char a = 255;
+};
+
+struct Theme {
+    Color background{17, 17, 22, 255};
+    Color headerText{247, 247, 250, 255};
+    Color dimText{150, 150, 162, 255};
+    Color gridLine{40, 40, 48, 255};
+    Color todayColumn{26, 26, 34, 255};
+    Color tailHatch{52, 52, 62, 140}; // translucent: a hint, not a wall of stripes
+    Color nowLine{230, 80, 80, 255};
+    Color holidayAccent{240, 180, 90, 255};
+    Color buttonFill{42, 42, 54, 255};
+    Color emptyHint{128, 128, 140, 255};
+};
+
+Theme defaultTheme();
+
+struct UiMetrics {
+    int topBarHeight = 0;   // week counter + navigation
+    int dayBarHeight = 0;   // day letter + date
+    int weekLabelSize = 0;  // px
+    int navLabelSize = 0;
+    int dayLetterSize = 0;
+    int dayDateSize = 0;
+    int eventTimeSize = 0;
+    int eventTitleSize = 0;
+    int boxGutter = 0;      // px between side-by-side event boxes (unused width)
+    int maxBorderPx = 0;    // urgency 100, before the per-box clamp
+    int tailMinHeight = 0;  // do not hatch a sliver shorter than this
+    int hatchSpacing = 0;   // px between 45-degree lines
+    int labelPad = 0;
+    int headerPad = 0;
+    int nowLineThickness = 0;
+    int buttonHeight = 0;
+    int buttonPad = 0;      // horizontal padding inside a navigation button
+};
+
+UiMetrics metricsFor(const Rect &content);
+
+} // namespace klend_ario::gui

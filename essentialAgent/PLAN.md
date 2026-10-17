@@ -13,7 +13,7 @@ as work lands; this file is the tracker.*
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** — CLI frozen 2026-10-17 |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
-| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **paused** — geometry done; CLI is the priority (2026-10-17) |
+| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **4a done** — read-only window + headless capture; edit UI next |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
 | 6 | Alarms — libnotify + PipeWire / Android native | **done** (notify; PipeWire sound is a named gap) |
 | 7 | Android platform layer + storage permissions | **deferred** — desktop-first (2026-10-16); see `REQUIREMENTS.md` |
@@ -160,6 +160,41 @@ and adds no CLI or schema surface.
 
 ---
 
+## Phase 4 — the weekly view (4a shipped 2026-10-17)
+
+Phase 4 paused on 2026-10-17 for the CLI freeze, then resumed. The pure geometry
+shipped first; 4a adds the scene, the window and a way to look at the result
+without a display. Read-only on purpose: the CLI and the MCP server are the
+write paths, so the first GUI cannot corrupt a calendar.
+
+- [x] **Geometry** — `week_layout`: frame margins, Sunday-first columns,
+      proportional boxes, hatched tail. Pure, no GPU.
+- [x] **DST-length days** — a day is passed as `[startUtc, endUtc)`. The old
+      `dayStart + 86,400` was wrong for 23/25-hour days.
+- [x] **Overlap clusters** — `layoutDay` splits concurrent events into
+      side-by-side slots; touching intervals stay sequential.
+- [x] **Local days at the edge** — `local_time` resolves the one timezone query
+      and hands layout/scene UTC instants plus the civil date.
+- [x] **Scene** — `buildWeekScene` emits draw ops + hit targets: colours
+      (`rgbForStyle`), urgency borders, height-tiered labels, truncation via an
+      injected `TextMetrics`, tail hatch, today tint, now-line, header, empty
+      state. `scene_test` asserts it with no GPU.
+- [x] **Week model** — `loadWeekModel`: one `EventQuery`, the week label
+      (including the New-Year week rule) and Peru holidays.
+- [x] **Window** — `klend_ario_gui`: `vk_canvas_wayland` + `app_shell`, arrow
+      week navigation, `T`/`H`/`Esc`, mouse on the header buttons, read-only DB,
+      one-second `Db::dataVersion()` poll so CLI/MCP writes appear live.
+- [x] **Headless capture** — `klend_ario_capture` renders fixture weeks through
+      `VK_EXT_headless_surface` to PNG, so the view can be reviewed (and
+      regressions seen) with no compositor.
+- [x] **Wiring** — `-DKLEND_BUILD_GUI=ON`; shaders via `VceShaders`, `slangc`
+      from the cache/`$VULKAN_SDK`/`PATH`; fonts+shaders copied beside the exe.
+- [ ] **4b — editing** — create/edit/delete from the GUI with CLI-parity fields
+      (`*Given` semantics), then alarms hooked into the window.
+- [ ] **4c — overlay / print** — still post-MVP per `merged.md` §5.4–5.5.
+
+---
+
 ## Phase 0 — the exact scaffold
 
 Everything below is created **before feature code**, so a fresh session can build
@@ -253,6 +288,19 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Phase 4a — the weekly view exists and renders (2026-10-17).** Added the pure
+  scene (`gui/src/scene.*`), local-day resolution (`local_time.*`), theme/metrics,
+  the DB→view bridge (`week_store.*`), the Canvas adapter, the `klend_ario_gui`
+  window (read-only, arrow/T/H/Esc, header hit targets, 1 s `Db::dataVersion`
+  poll so CLI/MCP writes appear live) and `klend_ario_capture` (headless PNG
+  scenarios). `week_layout` now takes `[startUtc, endUtc)` (DST days are 23/25 h)
+  and gains `layoutDay` overlap clusters; core gains `rgbForStyle`,
+  `textColorOn`, `weekOfYearFromCivilDate` and `Db::dataVersion`. Five new
+  suites (`local_time_test`, `theme_test`, `scene_test`, `week_store_test`, plus
+  expanded `week_layout_test`) bring the parent to 32. Verified by building
+  `-DKLEND_BUILD_GUI=ON`, four headless captures, and a live Wayland window that
+  showed a CLI edit within a second. No submodule change.
 
 - **MCP smoke hardened (2026-10-17).** `demo/mcp_smoke.py` now covers 66 checks:
   protocol resilience (malformed/whitespace frames, string ids, batching,

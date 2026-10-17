@@ -84,6 +84,12 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
 | CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`export`/`import`/`completion`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`/`completion`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
+| Week geometry, DST-length days, overlap clusters | `gui/tests/week_layout_test.cc` | `src/week_layout.cc` | none |
+| Local civil days (Lima, Berlin 23/25 h) | `gui/tests/local_time_test.cc` | `src/local_time.cc` | pinned `TZ`, no network |
+| Chrome metrics + palette | `gui/tests/theme_test.cc` | `src/theme.cc src/week_layout.cc` | none |
+| The weekly view's draw ops (colours, labels, borders, tail, now-line) | `gui/tests/scene_test.cc` | `src/scene.cc src/theme.cc src/week_layout.cc src/local_time.cc` + `core/src/event.cc` | none; fake `TextMetrics` |
+| DB → week model (one query, label, holidays) | `gui/tests/week_store_test.cc` | `src/week_store.cc` + core sources | in-memory DB, pinned `TZ` |
+| Headless view screenshots | `gui/tools/capture_main.cc` | the built binary | fixture weeks; **not** CTest |
 | MCP JSON parser/serializer | `mcp/tests/json_test.cc` | `mcp/src/json.cc` | none |
 | MCP JSON-RPC dispatch + five tools | `mcp/tests/server_test.cc` | `mcp/src/json.cc mcp/src/server.cc` + core | in-memory DB |
 | MCP end-to-end (real stdio) | `demo/mcp_smoke.py` | the built binary | throwaway temp DB; **not** CTest |
@@ -274,7 +280,7 @@ contract, option errors, and a strict "no output after stdin close" check.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 28 suites, not 11. The CLI's
+That is why the parent currently reports 32 suites, not 25. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

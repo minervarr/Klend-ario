@@ -302,6 +302,24 @@ void testEncryptedFileIsNotPlaintext() {
     std::remove(path);
 }
 
+void testDataVersionSeesOtherConnections() {
+    // data_version exists so a long-lived view notices an edit made by another
+    // process (the CLI, the MCP server) without polling the file's mtime.
+    const char *path = "klend_data_version_test.db";
+    std::remove(path);
+    auto writer = Db::open(path);
+    assert(writer.ok());
+    auto reader = Db::openReadOnly(path);
+    assert(reader.ok());
+
+    const long long before = reader.value().dataVersion().value();
+    // The reader has not changed, and a schema-only write by the writer is still
+    // a commit: the counter must move.
+    assert(writer.value().insertEvent(makeEvent("Later", 10, 20)).ok());
+    assert(reader.value().dataVersion().value() != before);
+    std::remove(path);
+}
+
 } // namespace
 
 int main() {
@@ -316,6 +334,7 @@ int main() {
     testSchemaVersionIsRecorded();
     testNewerSchemaIsRefused();
     testModifiedMarker();
+    testDataVersionSeesOtherConnections();
     testEncryptionRoundTrip();
     testReadOnlyOpenDoesNotCreateOrMigrate();
     testEncryptedReadOnlyOpen();

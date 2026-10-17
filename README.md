@@ -123,6 +123,37 @@ bash|zsh|fish` prints a script for your shell.
 The CLI feature set is frozen as of 2026-10-17; new feature work goes to the
 GUI. Bug fixes and tests still belong here.
 
+## Weekly view (GUI)
+
+The weekly view is built behind one option because the window needs the Vulkan
+SDK, the Slang compiler and the Wayland/xkb development packages:
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DKLEND_BUILD_GUI=ON
+ninja -C build
+./build/gui/klend_ario_gui --help
+./build/gui/klend_ario_gui                    # read-only, the state database
+./build/gui/klend_ario_gui --db /tmp/demo.db  # or a throwaway one
+```
+
+Keys: `Left`/`Right` week, `T` today, `H` toggle hidden blocks, `Esc` quit;
+the header's `< today >` buttons do the same with the mouse. The view is
+read-only for now — the CLI and the MCP server write — but it notices their
+writes within a second through `Db::dataVersion()`.
+
+Shaders and `fonts/ui/` are copied beside the binary; `FileAssetReader` looks
+there. Headless screenshots (no window, no compositor) come from the capture
+tool:
+
+```bash
+cd build/gui
+./klend_ario_capture --out /tmp/shots          # 1920x1080 PNGs
+./klend_ario_capture --frame 1280x720          # full-bleed layout
+```
+
+See [`gui/README.md`](gui/README.md) for the three layers and the rules behind
+them.
+
 ## AI client (OpenCode)
 
 The MCP server is the AI-facing surface. This repository's

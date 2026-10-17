@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(KLEND_BUILD_TESTS "Build the Debug-only assert-based test executables" ON)
-option(KLEND_BUILD_GUI "Build the GUI frontend (Phase 4 — not implemented)" OFF)
+option(KLEND_BUILD_GUI "Build the weekly view window + capture tool (needs Vulkan SDK, slangc, Wayland/xkb); the pure view layer always builds" OFF)
 
 # CTest drives the plain assert() suites; tests themselves are Debug-only and
 # are registered through cmake/TestHelpers.cmake.

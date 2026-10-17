@@ -1,6 +1,8 @@
 #include "klend_ario/event.hh"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 
 namespace klend_ario {
@@ -193,6 +195,61 @@ EventStyle styleFor(const Event &event) {
     return style;
 }
 
+namespace {
+
+// HSL -> RGB with the fixed saturation/lightness above (kStyleSaturation,
+// kStyleLightness). Standard formula, hue in degrees, wrapped into [0, 360).
+Rgb hslToRgb(double hue, double saturation, double lightness) {
+    hue = std::fmod(hue, 360.0);
+    if (hue < 0.0) {
+        hue += 360.0;
+    }
+    const double c = (1.0 - std::fabs(2.0 * lightness - 1.0)) * saturation;
+    const double hp = hue / 60.0;
+    const double x = c * (1.0 - std::fabs(std::fmod(hp, 2.0) - 1.0));
+    const double m = lightness - c / 2.0;
+
+    double r = 0.0, g = 0.0, b = 0.0;
+    if (hp < 1.0) {
+        r = c, g = x;
+    } else if (hp < 2.0) {
+        r = x, g = c;
+    } else if (hp < 3.0) {
+        g = c, b = x;
+    } else if (hp < 4.0) {
+        g = x, b = c;
+    } else if (hp < 5.0) {
+        r = x, b = c;
+    } else {
+        r = c, b = x;
+    }
+
+    auto channel = [m](double v) {
+        return static_cast<unsigned char>(std::lround(std::clamp(v + m, 0.0, 1.0) * 255.0));
+    };
+    return Rgb{channel(r), channel(g), channel(b)};
+}
+
+} // namespace
+
+Rgb rgbForStyle(const EventStyle &style) {
+    return hslToRgb(style.hue, kStyleSaturation, kStyleLightness);
+}
+
+Rgb textColorOn(Rgb fill) {
+    // sRGB -> linear, then Rec.709 luminance. Threshold is the midpoint between
+    // "white label is comfortable" and "it is not": the yellow-green part of the
+    // importance sweep lands above it and gets dark text; violet and red stay
+    // below and keep white.
+    auto linear = [](unsigned char v) {
+        const double s = v / 255.0;
+        return s <= 0.04045 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4);
+    };
+    const double luminance =
+        0.2126 * linear(fill.r) + 0.7152 * linear(fill.g) + 0.0722 * linear(fill.b);
+    return luminance > 0.30 ? Rgb{18, 18, 22} : Rgb{247, 247, 250};
+}
+
 int weekdayUtc(long long utcSeconds) {
     // 1970-01-01 was a Thursday, which is 4 with Sunday == 0.
     const long long days = floorDiv(utcSeconds, 86400);
@@ -218,13 +275,18 @@ WeekOfYear weekOfYearUtc(long long utcSeconds) {
     long long year = 0;
     unsigned month = 0, day = 0;
     civilFromDays(days, year, month, day);
+    return weekOfYearFromCivilDate(static_cast<int>(year), static_cast<int>(month),
+                                   static_cast<int>(day));
+}
 
+WeekOfYear weekOfYearFromCivilDate(int year, int month, int day) {
+    const long long ymd = daysFromCivil(year, static_cast<unsigned>(month), static_cast<unsigned>(day));
     const long long jan1 = daysFromCivil(year, 1, 1);
     const int jan1Weekday = static_cast<int>(floorMod(jan1 + 4, 7)); // 0 = Sunday
-    const long long dayOfYear = days - jan1;                         // 0-based
+    const long long dayOfYear = ymd - jan1;                          // 0-based
 
     WeekOfYear counter;
-    counter.year = static_cast<int>(year);
+    counter.year = year;
     // Week 1 holds 1 January; each following Sunday opens the next week. The
     // integer division truncates, which is exactly the "first Sunday on or
     // after 1 January" boundary.

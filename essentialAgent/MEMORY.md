@@ -113,6 +113,14 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Demo | Permanent `demo/klend_ario_demo.py`: stdlib-only Python consumer of the built binaries; every run uses a throwaway temp `--db`, never the real `state` DB, and never links `core/`. See `DEMO.md` |
 | Build system | **CMake + Ninja only** |
+| GUI build | `-DKLEND_BUILD_GUI=ON` (default OFF): the window + capture tool need the Vulkan SDK, `slangc` and Wayland/xkb. `klend_ario_view` and its pure suites always build |
+| GUI mode | **Read-only** (Phase 4a): `Db::openReadOnly`/`openEncryptedReadOnly`, CLI/MCP are the write paths. `--hidden` switches the query to `Visibility::Any` |
+| GUI refresh | One `EventQuery` per visible week; a 1 s poll of `Db::dataVersion()` reloads when ANOTHER connection commits (that is how an MCP edit appears live). The now-line redraws on a timer |
+| GUI local days | `gui/src/local_time` is the ONLY place a timezone is read; it returns local civil days with `[startUtc, endUtc)` bounds (23/25 h on DST days). Layout/scene take instants and never call the OS |
+| GUI rendering | Three layers: pure geometry → pure `Scene` (draw ops) → a thin `vk_canvas` mapping. Colours are core (`rgbForStyle`, `textColorOn`); chrome lives in `gui/theme` |
+| GUI week label | "Week N · Mon YYYY" from `weekOfYearFromCivilDate`; a week containing 1 January is week **1 of the new year** even though it starts in December |
+| GUI short events | Height stays proportional; labels are tiered by height (time, then title, then nothing). A five-minute event is a thin coloured line at its true start |
+| GUI screenshots | `klend_ario_capture` renders fixture weeks through `VK_EXT_headless_surface` to PNG (Debug-only, `TZ=UTC0`), so the view is reviewable with no display |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
 | Scope | **Desktop-first**: Linux is the active platform; Android is deferred (Phase 7) |
 | Time base | Unix seconds **UTC**; a day is the half-open interval `[0, 86400)` |
@@ -287,6 +295,38 @@ These are truths this workspace already paid for. Do not relearn them.
   SQLite3MultipleCiphers amalgamation that carries the encryption (Phase 3).
   Record the exact version and the download's checksum beside the vendored
   files (`libs/thirdparty/sqlite3mc/README.md`).
+- **A renderer is not a place to decide things.** Every visual choice — colour,
+  border, which label fits, truncation, hatch, now-line, header text — is made
+  in the pure `Scene` and asserted by `scene_test`. What is left in the
+  `vk_canvas` adapter is a switch. That is the only way the view could be
+  trusted on a machine where it could not be drawn, and it kept the untestable
+  half small enough to read.
+- **A local day is not 86,400 seconds.** The model is UTC, but the view's columns
+  are local days; a spring-forward day is 23 hours and a fall-back one is 25.
+  Passing `dayStart` alone and assuming a day length put every event after the
+  transition in the wrong place — twice a year, only in some zones, which is
+  exactly the bug that survives a release. Pass `[startUtc, endUtc)`.
+- **Overlaps are a day-level question.** `dayTimeRect` can only ever return the
+  full column width, so two events at the same time paint over each other. Ask
+  the whole day (`layoutDay`): cluster intervals, give each cluster as many
+  slots as its maximum concurrency, and keep `boxes` parallel to the input so
+  the scene never needs an id map. Touching endpoints are sequential, not
+  concurrent, because the range is half-open.
+- **A week's number belongs to the week.** A week that contains 1 January is
+  week 1 of the NEW year even when its Sunday is in December. Labelling from the
+  Sunday alone produced "Week 53 · Dec 2026" and then jumped to week 2.
+- **A viewer can be read-only and still live.** `PRAGMA data_version` changes
+  when ANOTHER connection commits (not this one), so a one-second poll gives an
+  open window an AI's edit with no socket, no watcher and no write access. That
+  is the shape that lets the GUI be safe before it is editable.
+- **A reminder row is not a block in the view either.** `EventType::Alarm` has no
+  duration and is anchored to another event; drawing it would invent a meeting
+  at the anchor's time. The scene skips those rows rather than the query,
+  because `list`/`export` must still see them.
+- **Pixels are a build product.** Shaders are compiled next to the build tree and
+  copied beside the executable with the fonts, because `FileAssetReader` looks
+  there. A build tree that cannot run is a build tree whose UI is never seen —
+  and a headless capture (`VK_EXT_headless_surface`) is enough to see it.
 
 ## 6. Glossary
 
@@ -296,8 +336,13 @@ These are truths this workspace already paid for. Do not relearn them.
   (`libs/firstparty/pe-holiday-calc`). Core wraps its registry behind
   `klend_ario/holidays.hh` so callers see `arc::Result`, not `std::optional`.
 - **`app_shell`** — the Host/AppView seam and per-app paths/metrics, lifted out
-  of Matrix_Player. Relevant at Phase 4, not before.
+  of Matrix_Player. The GUI's window/host half.
 - **`vk_canvas`** — the Vulkan 2D canvas + text engine. The GUI renderer.
+- **Scene** — `gui/src/scene`: the weekly view as a list of draw ops and hit
+  targets, built from a `WeekModel` and a `TextMetrics` seam. Pure, so
+  `scene_test` asserts the whole visual contract without a GPU.
+- **Capture** — `klend_ario_capture`: renders fixture weeks headlessly
+  (`VK_EXT_headless_surface`) to PNG. Dev tooling, Debug-only.
 - **`merged.md`** — the product plan. **`git_wrapper`** — the commit tool at the
   repo root (see `AGENTS.md`).
 - **NTP** — network time source planned for the runtime. It is never used by a

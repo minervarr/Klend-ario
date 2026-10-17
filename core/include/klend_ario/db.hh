@@ -87,6 +87,13 @@ public:
     // otherwise the first error detail). Read-only; `doctor` is the caller.
     arc::Result<std::string> integrityCheck();
 
+    // SQLite's per-connection change counter. It does NOT change when this
+    // connection writes; it changes when ANOTHER connection commits. That is
+    // exactly what a long-lived view needs to notice an edit made by the CLI or
+    // the MCP server without watching the filesystem or taking a shared lock.
+    // Cheap enough to poll (a single pragma read, no table scan).
+    arc::Result<long long> dataVersion();
+
     // Deletes `id`. Succeeds even when nothing matched.
     arc::Result<void> removeEvent(long long id);
 

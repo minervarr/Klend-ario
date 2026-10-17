@@ -6,13 +6,15 @@
 namespace klend_ario::gui {
 namespace {
 
-constexpr long long kDaySeconds = 86400;
-
-// A column fraction (0..1 of the day) to a pixel offset within the column,
-// clamped so an out-of-range event never draws outside its day.
-int offsetFor(long long secondsFromDayStart, int columnHeight) {
-    const double fraction =
-        std::clamp(static_cast<double>(secondsFromDayStart) / kDaySeconds, 0.0, 1.0);
+// A fraction of a day to a pixel offset within the column, clamped so an
+// out-of-range event never draws outside its day.
+int offsetFor(long long secondsFromDayStart, long long dayLengthSeconds, int columnHeight) {
+    if (dayLengthSeconds <= 0) {
+        return 0;
+    }
+    const double fraction = std::clamp(
+        static_cast<double>(secondsFromDayStart) / static_cast<double>(dayLengthSeconds),
+        0.0, 1.0);
     return static_cast<int>(std::lround(fraction * columnHeight));
 }
 
@@ -51,9 +53,8 @@ WeekGrid weekGrid(const Rect &content, int headerHeight) {
     return grid;
 }
 
-EventBox dayTimeRect(const Rect &column, long long dayStartUtc, long long eventStartUtc,
-                     long long eventEndUtc) {
-    const long long dayEndUtc = dayStartUtc + kDaySeconds;
+EventBox dayTimeRect(const Rect &column, long long dayStartUtc, long long dayEndUtc,
+                     long long eventStartUtc, long long eventEndUtc) {
     EventBox box;
     box.clippedTop = eventStartUtc < dayStartUtc;
     box.clippedBottom = eventEndUtc > dayEndUtc;
@@ -61,8 +62,8 @@ EventBox dayTimeRect(const Rect &column, long long dayStartUtc, long long eventS
     const long long visibleStart = std::max(eventStartUtc, dayStartUtc);
     const long long visibleEnd = std::min(eventEndUtc, dayEndUtc);
 
-    const int top = column.y + offsetFor(visibleStart - dayStartUtc, column.h);
-    const int bottom = column.y + offsetFor(visibleEnd - dayStartUtc, column.h);
+    const int top = offsetForInstant(column, dayStartUtc, dayEndUtc, visibleStart);
+    const int bottom = offsetForInstant(column, dayStartUtc, dayEndUtc, visibleEnd);
 
     // A zero-length or sub-pixel event still gets one visible pixel, so it is
     // never drawn as nothing.
@@ -71,9 +72,96 @@ EventBox dayTimeRect(const Rect &column, long long dayStartUtc, long long eventS
     return box;
 }
 
-Rect tailRect(const Rect &column, long long dayStartUtc, long long lastEventEndUtc) {
+int offsetForInstant(const Rect &column, long long dayStartUtc, long long dayEndUtc,
+                     long long atUtc) {
+    return column.y + offsetFor(atUtc - dayStartUtc, dayEndUtc - dayStartUtc, column.h);
+}
+
+std::vector<DayBox> layoutDay(const Rect &column, long long dayStartUtc, long long dayEndUtc,
+                              const std::vector<DaySpan> &spans) {
+    std::vector<DayBox> boxes(spans.size());
+    if (spans.empty() || column.empty()) {
+        return boxes;
+    }
+
+    // --- 1. Walk the day in start order, grouping touching-by-time events into
+    // clusters. A cluster ends at the first event that starts at or after the
+    // cluster's running maximum end: half-open intervals that merely touch
+    // (end == next start) are sequential, not concurrent.
+    std::vector<size_t> order(spans.size());
+    for (size_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [&spans](size_t a, size_t b) {
+        if (spans[a].startUtc != spans[b].startUtc) {
+            return spans[a].startUtc < spans[b].startUtc;
+        }
+        return spans[a].endUtc < spans[b].endUtc;
+    });
+
+    size_t clusterBegin = 0;
+    long long clusterEnd = spans[order[0]].endUtc;
+    auto closeCluster = [&](size_t clusterEndIndex) {
+        // --- 2. Greedy slot assignment inside the cluster: reuse the first slot
+        // whose last event has ended (half-open, so `<= start` is free).
+        std::vector<long long> slotEnds;
+        for (size_t k = clusterBegin; k < clusterEndIndex; ++k) {
+            const size_t index = order[k];
+            size_t slot = 0;
+            while (slot < slotEnds.size() && slotEnds[slot] > spans[index].startUtc) {
+                ++slot;
+            }
+            if (slot == slotEnds.size()) {
+                slotEnds.push_back(spans[index].endUtc);
+            } else {
+                slotEnds[slot] = spans[index].endUtc;
+            }
+            boxes[index].slot = static_cast<int>(slot);
+        }
+
+        const int slots = static_cast<int>(std::max<size_t>(slotEnds.size(), 1));
+        const int base = column.w / slots;
+        const int remainder = column.w - base * slots;
+        int x = column.x;
+        std::vector<int> width(static_cast<size_t>(slots));
+        std::vector<int> left(static_cast<size_t>(slots));
+        for (int s = 0; s < slots; ++s) {
+            width[static_cast<size_t>(s)] = base + (s < remainder ? 1 : 0);
+            left[static_cast<size_t>(s)] = x;
+            x += width[static_cast<size_t>(s)];
+        }
+
+        for (size_t k = clusterBegin; k < clusterEndIndex; ++k) {
+            const size_t index = order[k];
+            const EventBox geometry =
+                dayTimeRect(Rect{left[static_cast<size_t>(boxes[index].slot)], column.y,
+                                 width[static_cast<size_t>(boxes[index].slot)], column.h},
+                            dayStartUtc, dayEndUtc, spans[index].startUtc, spans[index].endUtc);
+            boxes[index].rect = geometry.rect;
+            boxes[index].clippedTop = geometry.clippedTop;
+            boxes[index].clippedBottom = geometry.clippedBottom;
+            boxes[index].slots = slots;
+        }
+    };
+
+    for (size_t i = 1; i < order.size(); ++i) {
+        if (spans[order[i]].startUtc >= clusterEnd) {
+            closeCluster(i);
+            clusterBegin = i;
+            clusterEnd = spans[order[i]].endUtc;
+        } else {
+            clusterEnd = std::max(clusterEnd, spans[order[i]].endUtc);
+        }
+    }
+    closeCluster(order.size());
+    return boxes;
+}
+
+Rect tailRect(const Rect &column, long long dayStartUtc, long long dayEndUtc,
+              long long lastEventEndUtc) {
+    const long long dayLength = dayEndUtc - dayStartUtc;
     const long long from = std::max(lastEventEndUtc, dayStartUtc);
-    const int top = column.y + offsetFor(from - dayStartUtc, column.h);
+    const int top = column.y + offsetFor(from - dayStartUtc, dayLength, column.h);
     return Rect{column.x, top, column.w, column.bottom() - top};
 }
 

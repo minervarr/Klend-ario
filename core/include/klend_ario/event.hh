@@ -87,6 +87,31 @@ struct EventStyle {
 EventStyle styleFor(const Event &event);
 
 // ---------------------------------------------------------------------------
+// Style -> pixels. The conversion lives in core, not in a frontend, for the
+// same reason the hue does: the weekly view and the printed week (and any
+// future preview) must colour an event identically, and a second HSL->RGB
+// implementation is how those surfaces start to disagree.
+//
+// Saturation and lightness are fixed rather than derived from the event, so
+// the hue axis is the only thing that varies: at this lightness every point of
+// the violet->red sweep keeps enough contrast for a label, and urgency stays a
+// border-only signal. `textColorOn` picks the label colour from the fill's
+// linear luminance, which is what keeps the yellow-green middle of the sweep
+// readable without inventing a second palette.
+// ---------------------------------------------------------------------------
+inline constexpr double kStyleSaturation = 0.72;
+inline constexpr double kStyleLightness = 0.46;
+
+struct Rgb {
+    unsigned char r = 0;
+    unsigned char g = 0;
+    unsigned char b = 0;
+};
+
+Rgb rgbForStyle(const EventStyle &style);
+Rgb textColorOn(Rgb fill); // near-black on light fills, near-white on dark ones
+
+// ---------------------------------------------------------------------------
 // Calendar arithmetic. The week STARTS SUNDAY (merged.md §1) and every instant
 // is UTC. Pure integer math — no <ctime>, no timezone database — so a boundary
 // can be asserted exactly. UTC is the model; a local zone is a rendering
@@ -114,5 +139,11 @@ struct WeekOfYear {
     int week = 1;
 };
 WeekOfYear weekOfYearUtc(long long utcSeconds);
+
+// The same counter for a CIVIL date. A local week is not a UTC week: at a
+// local Sunday 00:00 an east-of-UTC zone is still on Saturday in UTC, so
+// `weekOfYearUtc(instant)` would name the previous week. The GUI resolves
+// local midnights itself and passes the date it is actually drawing.
+WeekOfYear weekOfYearFromCivilDate(int year, int month, int day);
 
 } // namespace klend_ario

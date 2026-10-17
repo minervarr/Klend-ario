@@ -566,8 +566,22 @@ arc::Result<std::string> Db::integrityCheck() {
     return result;
 }
 
-arc::Result<void> Db::removeEvent(long long id) {
+arc::Result<long long> Db::dataVersion() {
     Statement stmt;
+    if (auto prepared = stmt.prepare(db_, "PRAGMA data_version"); !prepared) {
+        return prepared.error();
+    }
+    auto row = stmt.step();
+    if (!row) {
+        return row.error();
+    }
+    if (!row.value()) {
+        return 0;
+    }
+    return static_cast<long long>(sqlite3_column_int64(stmt.get(), 0));
+}
+
+arc::Result<void> Db::removeEvent(long long id) {    Statement stmt;
     if (auto prepared = stmt.prepare(db_, "DELETE FROM events WHERE id = ?"); !prepared) {
         return prepared.error();
     }
