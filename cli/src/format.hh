@@ -6,9 +6,11 @@
 
 #include "klend_ario/alarm.hh"
 #include "klend_ario/conflict.hh"
+#include "klend_ario/diagnostics.hh"
 #include "klend_ario/event.hh"
 #include "klend_ario/free.hh"
 #include "klend_ario/holidays.hh"
+#include "klend_ario/stats.hh"
 
 // Output rendering, as pure functions.
 //
@@ -56,6 +58,12 @@ std::string formatFreeSlots(const std::vector<FreeSlot> &slots, OutputFormat for
 
 std::string formatAlarms(const std::vector<AlarmTrigger> &triggers, OutputFormat format,
                          const FormatOptions &options);
+
+std::string formatStats(const CalendarStats &stats, OutputFormat format,
+                        const FormatOptions &options);
+
+std::string formatDiagnostics(const Diagnostics &diagnostics, OutputFormat format,
+                              const FormatOptions &options);
 
 // The value `add`, `edit` and `duplicate` print: a bare id, or {"id":N}.
 std::string formatId(long long id, OutputFormat format);

@@ -62,6 +62,10 @@ const char *verbName(Verb verb) {
         return "free";
     case Verb::Alarms:
         return "alarms";
+    case Verb::Stats:
+        return "stats";
+    case Verb::Doctor:
+        return "doctor";
     case Verb::Show:
         return "show";
     case Verb::Remove:
@@ -91,7 +95,9 @@ bool isIntelligenceVerb(Verb verb) {
     return verb == Verb::Conflicts || verb == Verb::Free || verb == Verb::Alarms;
 }
 
-bool isRangeVerb(Verb verb) { return isQueryVerb(verb) || isIntelligenceVerb(verb); }
+bool isAnalysisVerb(Verb verb) { return isIntelligenceVerb(verb) || verb == Verb::Stats; }
+
+bool isRangeVerb(Verb verb) { return isQueryVerb(verb) || isAnalysisVerb(verb); }
 
 bool isVisibilityVerb(Verb verb) { return isRangeVerb(verb); }
 
@@ -99,7 +105,7 @@ bool isLimitVerb(Verb verb) { return isQueryVerb(verb) || isIntelligenceVerb(ver
 
 bool isTypeVerb(Verb verb) {
     return verb == Verb::Add || verb == Verb::Edit || isQueryVerb(verb) ||
-           isIntelligenceVerb(verb);
+           isAnalysisVerb(verb);
 }
 
 } // namespace
@@ -143,6 +149,10 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             a.verb = Verb::Free;
         } else if (verb == "alarms") {
             a.verb = Verb::Alarms;
+        } else if (verb == "stats") {
+            a.verb = Verb::Stats;
+        } else if (verb == "doctor") {
+            a.verb = Verb::Doctor;
         } else if (verb == "show") {
             a.verb = Verb::Show;
         } else if (verb == "rm" || verb == "remove") {
@@ -556,6 +566,8 @@ std::string usage() {
            "  conflicts  find overlapping events\n"
            "  free       find free slots in a range\n"
            "  alarms     list upcoming alarm triggers\n"
+           "  stats      summarize a set of events\n"
+           "  doctor     check the database's health (read-only)\n"
            "  show       show one event by id\n"
            "  rm         delete one event by id\n"
            "  holidays   list a country's public holidays for a year\n"
@@ -578,6 +590,9 @@ std::string usage() {
            "  --from EXPR --to EXPR  --type T  --limit N\n"
            "  --visible | --hidden-only | --include-hidden\n"
            "  free also takes --min-duration D (default 30m)\n"
+           "\n"
+           "stats takes --from/--to, --type and the visibility flags; doctor\n"
+           "takes only --db/--key-file/--format and never writes.\n"
            "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"
@@ -711,6 +726,21 @@ std::string usageFor(std::string_view topic) {
                "  Upcoming triggers (default: now + 7 days), sorted by fire time.\n"
                "  Hidden rows ARE included: hiding a sleep block does not cancel its\n"
                "  alarm. Each event contributes T-offset (if set) and T=0.\n";
+    }
+    if (topic == "stats") {
+        return "usage: klend_ario_cli stats [--from EXPR] [--to EXPR] [--type T]\n"
+               "                            [--visible | --hidden-only | --include-hidden]\n"
+               "\n"
+               "  Counts by type/visibility, upcoming/ongoing/past, scheduled time,\n"
+               "  conflict pairs and the event span. Default: all time, all rows.\n"
+               "  `--from`/`--to` narrow the set; `--type` keeps one event type.\n";
+    }
+    if (topic == "doctor") {
+        return "usage: klend_ario_cli doctor [--db PATH] [--key-file PATH] [--format FMT]\n"
+               "\n"
+               "  Read-only health report: SQLite integrity, schema version,\n"
+               "  modified_utc marker, Syncthing conflict copies, event intervals.\n"
+               "  Exits 0 when every check is ok, 1 when anything is warn/fail.\n";
     }
     if (topic == "show") {
         return "usage: klend_ario_cli show <id>\n";

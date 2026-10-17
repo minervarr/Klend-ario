@@ -54,6 +54,8 @@ ctest --test-dir build --output-on-failure
 ./build/cli/klend_ario_cli conflicts
 ./build/cli/klend_ario_cli free --min-duration 45m
 ./build/cli/klend_ario_cli alarms --limit 5
+./build/cli/klend_ario_cli stats
+./build/cli/klend_ario_cli doctor
 ./build/cli/klend_ario_cli list --from today --to today+7d --min-importance 70
 ./build/cli/klend_ario_cli edit 1 --shift 1h
 ./build/cli/klend_ario_cli holidays --year 2026 --format csv
@@ -75,6 +77,10 @@ is already underway.
 `free` merges busy time and lists the gaps; `alarms` lists T-offset and T=0
 triggers. Alarms include hidden rows by default — hiding a sleep block in the
 weekly view does not cancel its wake-up.
+
+`stats` summarizes all rows by default (narrow with `--from`/`--to`/`--type`);
+`doctor` is a read-only health report and exits `1` when it finds a warning
+(Syncthing conflict copy, missing marker, bad schema version, or corrupt data).
 
 ## Layout
 

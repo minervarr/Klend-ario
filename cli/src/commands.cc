@@ -20,9 +20,11 @@
 #include "klend_ario/alarm.hh"
 #include "klend_ario/conflict.hh"
 #include "klend_ario/db.hh"
+#include "klend_ario/diagnostics.hh"
 #include "klend_ario/event.hh"
 #include "klend_ario/free.hh"
 #include "klend_ario/holidays.hh"
+#include "klend_ario/stats.hh"
 #include "klend_ario/sync.hh"
 #include "klend_ario/timeexpr.hh"
 
@@ -116,8 +118,12 @@ std::string resolvePassphrase(const Args &args, std::string &error) {
     return {};
 }
 
-int openDb(const Args &args, Db &out) {
-    const std::string path = args.dbPath.empty() ? defaultDbPath() : args.dbPath;
+std::string dbPathOf(const Args &args) {
+    return args.dbPath.empty() ? defaultDbPath() : args.dbPath;
+}
+
+int openDb(const Args &args, Db &out, bool warnConflicts = true) {
+    const std::string path = dbPathOf(args);
 
     std::string keyError;
     const std::string passphrase = resolvePassphrase(args, keyError);
@@ -138,9 +144,12 @@ int openDb(const Args &args, Db &out) {
     out = opened.take();
 
     // The sync policy is to DETECT conflict copies, never merge (MEMORY.md §7).
-    // Say so on every open, so a conflict cannot sit there unnoticed.
-    for (const std::string &conflict : klend_ario::syncConflictCopies(path)) {
-        std::fprintf(stderr, "warning: Syncthing conflict copy present: %s\n", conflict.c_str());
+    // Say so on every open, so a conflict cannot sit there unnoticed. `doctor`
+    // turns this off because it reports the copies in its own output.
+    if (warnConflicts) {
+        for (const std::string &conflict : klend_ario::syncConflictCopies(path)) {
+            std::fprintf(stderr, "warning: Syncthing conflict copy present: %s\n", conflict.c_str());
+        }
     }
     return kExitOk;
 }
@@ -408,7 +417,8 @@ std::string trimCopy(std::string_view text) {
 // A hidden row is a real row: list/search are data access and see everything.
 // The view verbs mirror the weekly view, which hides sleep blocks by default.
 Visibility defaultVisibilityFor(Verb verb) {
-    if (verb == Verb::List || verb == Verb::Search || verb == Verb::Alarms) {
+    if (verb == Verb::List || verb == Verb::Search || verb == Verb::Alarms ||
+        verb == Verb::Stats) {
         return Visibility::Any;
     }
     return Visibility::Visible;
@@ -798,6 +808,61 @@ int commandAlarms(const Args &args, OutputFormat format, const FormatOptions &op
     return kExitOk;
 }
 
+int commandStats(const Args &args, OutputFormat format, const FormatOptions &options) {
+    const long long now = klend_ario::utcNowSeconds();
+    EventQuery query;
+    query.limit = -1;
+
+    if (args.fromGiven) {
+        const auto parsed = parseInstant(args.from, now);
+        if (!parsed) {
+            return usageError("--from is not a UTC instant (e.g. today, 2026-10-16, now)");
+        }
+        query.fromUtc = *parsed;
+    }
+    if (args.toGiven) {
+        const auto parsed = parseInstant(args.to, now);
+        if (!parsed) {
+            return usageError("--to is not a UTC instant (e.g. tomorrow, 2026-10-23)");
+        }
+        query.toUtc = *parsed;
+    }
+    if (query.toUtc < query.fromUtc) {
+        return usageError("--to is before --from");
+    }
+
+    if (const int rc = resolveVisibility(args, Verb::Stats, query.visibility); rc != kExitOk) {
+        return rc;
+    }
+    if (const int rc = applyTypeFilter(args, query); rc != kExitOk) {
+        return rc;
+    }
+
+    Db db;
+    if (const int rc = openDb(args, db); rc != kExitOk) {
+        return rc;
+    }
+    auto events = db.queryEvents(query);
+    if (!events) {
+        return reportError(events.error());
+    }
+    const klend_ario::CalendarStats stats = klend_ario::computeStats(events.value(), now);
+    std::fputs(formatStats(stats, format, options).c_str(), stdout);
+    return kExitOk;
+}
+
+int commandDoctor(const Args &args, OutputFormat format, const FormatOptions &options) {
+    Db db;
+    // The report itself names every conflict copy; do not duplicate the warning
+    // on stderr while producing it.
+    if (const int rc = openDb(args, db, false); rc != kExitOk) {
+        return rc;
+    }
+    const klend_ario::Diagnostics report = klend_ario::diagnose(db, dbPathOf(args));
+    std::fputs(formatDiagnostics(report, format, options).c_str(), stdout);
+    return report.healthy() ? kExitOk : kExitError;
+}
+
 int commandShow(const Args &args, OutputFormat format, const FormatOptions &options) {
     if (args.id <= 0) {
         return usageError("show needs an event id");
@@ -906,6 +971,10 @@ int runCommand(const Args &args) {
         return commandFree(args, format, options);
     case Verb::Alarms:
         return commandAlarms(args, format, options);
+    case Verb::Stats:
+        return commandStats(args, format, options);
+    case Verb::Doctor:
+        return commandDoctor(args, format, options);
     case Verb::Show:
         return commandShow(args, format, options);
     case Verb::Remove:

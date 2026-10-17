@@ -66,6 +66,10 @@ public:
     // wildcards. The range is half-open, as above.
     arc::Result<std::vector<Event>> queryEvents(const EventQuery &query);
 
+    // SQLite's canonical `PRAGMA integrity_check` answer ("ok" when healthy,
+    // otherwise the first error detail). Read-only; `doctor` is the caller.
+    arc::Result<std::string> integrityCheck();
+
     // Deletes `id`. Succeeds even when nothing matched.
     arc::Result<void> removeEvent(long long id);
 

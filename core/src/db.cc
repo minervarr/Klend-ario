@@ -441,6 +441,35 @@ arc::Result<std::vector<Event>> Db::queryEvents(const EventQuery &query) {
     return events;
 }
 
+arc::Result<std::string> Db::integrityCheck() {
+    Statement stmt;
+    if (auto prepared = stmt.prepare(db_, "PRAGMA integrity_check"); !prepared) {
+        return prepared.error();
+    }
+
+    std::string result;
+    for (;;) {
+        auto row = stmt.step();
+        if (!row) {
+            return row.error();
+        }
+        if (!row.value()) {
+            break;
+        }
+        const auto *text = sqlite3_column_text(stmt.get(), 0);
+        if (text != nullptr) {
+            if (!result.empty()) {
+                result.push_back('\n');
+            }
+            result += reinterpret_cast<const char *>(text);
+        }
+    }
+    if (result.empty()) {
+        result = "ok";
+    }
+    return result;
+}
+
 arc::Result<void> Db::removeEvent(long long id) {
     Statement stmt;
     if (auto prepared = stmt.prepare(db_, "DELETE FROM events WHERE id = ?"); !prepared) {

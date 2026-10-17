@@ -72,17 +72,19 @@ work is staged so each layer is useful and tested on its own; logic stays in
       `--min/max-importance`, `--min/max-urgency`; visibility
       `--visible`/`--hidden-only`/`--include-hidden`; `--sort`, `--limit`,
       `--offset`. Literal substring search; no FTS or migration.
-- [ ] **Stage 5 — intelligence.**
+- [x] **Stage 5 — intelligence.**
   - [x] **5a — conflicts, free, alarms.** Pure `conflict`/`free` interval
         analyses plus an `alarms` verb over the existing trigger core.
         `EventType::Alarm` rows are reminders and do not occupy time; hidden
         rows still alarm.
-  - [ ] **5b — stats, doctor.** Summary counts and a read-only health report
-        (`PRAGMA integrity_check`, schema/marker checks, Syncthing copies).
+  - [x] **5b — stats, doctor.** Summary counts (`computeStats`) and a read-only
+        health report (`diagnose`): SQLite integrity, schema version,
+        `modified_utc`, Syncthing copies, interval sanity. Doctor exits 1 on
+        warn/fail.
 - [ ] **Stage 6 — portability.** `export`/`import` (csv/jsonl/ics export),
       `completion`.
 
-Stages 5b–6 are planned, not built. GUI Phase 4 resumes after these unless the
+Stage 6 is planned, not built. GUI Phase 4 resumes after these unless the
 order changes again — see the status log.
 
 ---
@@ -171,7 +173,7 @@ ctest --test-dir build --output-on-failure      # all pass
 - [x] `core/tests/holidays_test.cc` asserts a known 2026 Peru calendar,
       case/trimmed lookup, the *día no laborable* negative, and the
       unknown-country error.
-- [x] The child's seven suites run through the parent's CTest (23 suites
+- [x] The child's seven suites run through the parent's CTest (25 suites
       total), so a parent `ctest` also protects the library.
 - [ ] Android NDK build of the child — open; no NDK/SDK in this environment.
 
@@ -180,6 +182,17 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **CLI hardening, Stage 5b — stats/doctor (2026-10-17).** Added
+  `core/stats.hh` (`computeStats`: counts by type/visibility,
+  upcoming/ongoing/past, summed durations, conflict pairs, span) and
+  `core/diagnostics.hh` (`diagnose`: integrity, schema version, `modified_utc`,
+  Syncthing conflict copies, interval sanity). `Db::integrityCheck()` wraps
+  `PRAGMA integrity_check`. New `stats` and `doctor` verbs; doctor is read-only
+  and exits 1 on any warn/fail. Fixed `syncConflictCopies` for a relative
+  `--db`: a bare filename has an empty parent, which previously made the
+  conflict-copy scan silently list nothing. `stats_test`/`diagnostics_test`
+  bring the parent to 25 suites. No submodule change.
 
 - **CLI hardening, Stage 5a — conflicts/free/alarms (2026-10-17).** Added pure
   `core/conflict.hh` (pairwise overlaps; `EventType::Alarm` rows are reminders,

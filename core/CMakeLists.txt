@@ -24,6 +24,8 @@ add_library(klend_ario_core STATIC
     src/query.cc
     src/conflict.cc
     src/free.cc
+    src/stats.cc
+    src/diagnostics.cc
     src/alarm.cc
     src/sync.cc
     src/holidays.cc)
@@ -87,6 +89,20 @@ klend_ario_add_test(conflict_test
 klend_ario_add_test(free_test
     SOURCES  tests/free_test.cc src/free.cc src/event.cc
     INCLUDES include)
+
+# stats_test — the summary counts over a fixed clock. It links the conflict
+# rule because `conflictPairs` is part of the summary.
+klend_ario_add_test(stats_test
+    SOURCES  tests/stats_test.cc src/stats.cc src/conflict.cc src/event.cc
+    INCLUDES include)
+
+# diagnostics_test — the doctor's checks over an in-memory database. The sync
+# conflict-copy path is exercised by e2e (it needs a real directory).
+klend_ario_add_test(diagnostics_test
+    SOURCES  tests/diagnostics_test.cc src/diagnostics.cc src/db.cc src/schema.cc
+             src/event.cc src/query.cc src/conflict.cc src/sync.cc
+    INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
+    LIBS     sqlite3mc arc_fs arc_util)
 
 # sync_test — the pure half of the Syncthing conflict policy. Links sync.cc and
 # arc_fs (for the directory listing) and opens nothing.

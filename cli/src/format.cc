@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace klend_ario::cli {
@@ -708,6 +709,199 @@ std::string formatAlarms(const std::vector<AlarmTrigger> &triggers, OutputFormat
                    tsvField(std::to_string(trigger.eventId)) + "\t" +
                    tsvField(trigger.title) + "\t" + tsvField(alarmKind(trigger)) + "\t" +
                    std::to_string(offsetSeconds) + "\n";
+        }
+    }
+    return out;
+}
+
+namespace {
+
+// Kept local so format_test does not have to link the diagnostics module (and
+// sqlite) just to render a status word.
+const char *statusLabel(CheckStatus status) {
+    switch (status) {
+    case CheckStatus::Ok:
+        return "ok";
+    case CheckStatus::Warn:
+        return "warn";
+    case CheckStatus::Fail:
+        return "fail";
+    }
+    return "fail";
+}
+
+} // namespace
+
+std::string formatStats(const CalendarStats &stats, OutputFormat format,
+                        const FormatOptions &options) {
+    const std::string scheduled = humanDuration(stats.scheduledSeconds);
+    const std::string earliest =
+        stats.earliestStartUtc ? formatIso8601(*stats.earliestStartUtc) : "-";
+    const std::string latest = stats.latestEndUtc ? formatIso8601(*stats.latestEndUtc) : "-";
+
+    const std::vector<std::pair<std::string, std::string>> metrics = {
+        {"total", std::to_string(stats.total)},
+        {"visible", std::to_string(stats.visible)},
+        {"hidden", std::to_string(stats.hidden)},
+        {"event", std::to_string(stats.byType[static_cast<size_t>(EventType::Event)])},
+        {"sleep", std::to_string(stats.byType[static_cast<size_t>(EventType::Sleep)])},
+        {"wake", std::to_string(stats.byType[static_cast<size_t>(EventType::Wake)])},
+        {"alarm", std::to_string(stats.byType[static_cast<size_t>(EventType::Alarm)])},
+        {"upcoming", std::to_string(stats.upcoming)},
+        {"ongoing", std::to_string(stats.ongoing)},
+        {"past", std::to_string(stats.past)},
+        {"scheduled", scheduled},
+        {"conflicts", std::to_string(stats.conflictPairs)},
+        {"earliest", earliest},
+        {"latest", latest},
+    };
+
+    if (format == OutputFormat::Text) {
+        std::string out;
+        for (const auto &[name, value] : metrics) {
+            out += name;
+            if (name.size() < 12) {
+                out.append(12 - name.size(), ' ');
+            }
+            out += value;
+            out.push_back('\n');
+        }
+        return out;
+    }
+    if (format == OutputFormat::Table) {
+        static const Cells headers = {"METRIC", "VALUE"};
+        static const std::vector<bool> alignment = {false, false};
+        std::vector<TableRow> rows;
+        rows.reserve(metrics.size());
+        for (const auto &[name, value] : metrics) {
+            rows.push_back({{name, value}, alignment});
+        }
+        const std::string full = renderTable(headers, rows, alignment);
+        if (options.header) {
+            return full;
+        }
+        const size_t firstNewline = full.find('\n');
+        return firstNewline == std::string::npos ? std::string() : full.substr(firstNewline + 1);
+    }
+    if (format == OutputFormat::Json) {
+        std::string out = "{\"total\":" + std::to_string(stats.total) +
+                          ",\"visible\":" + std::to_string(stats.visible) +
+                          ",\"hidden\":" + std::to_string(stats.hidden) + ",\"by_type\":{" +
+                          "\"event\":" +
+                          std::to_string(stats.byType[static_cast<size_t>(EventType::Event)]) +
+                          ",\"sleep\":" +
+                          std::to_string(stats.byType[static_cast<size_t>(EventType::Sleep)]) +
+                          ",\"wake\":" +
+                          std::to_string(stats.byType[static_cast<size_t>(EventType::Wake)]) +
+                          ",\"alarm\":" +
+                          std::to_string(stats.byType[static_cast<size_t>(EventType::Alarm)]) +
+                          "},\"upcoming\":" + std::to_string(stats.upcoming) +
+                          ",\"ongoing\":" + std::to_string(stats.ongoing) +
+                          ",\"past\":" + std::to_string(stats.past) +
+                          ",\"scheduled_seconds\":" + std::to_string(stats.scheduledSeconds) +
+                          ",\"conflict_pairs\":" + std::to_string(stats.conflictPairs) +
+                          ",\"earliest\":";
+        out += stats.earliestStartUtc ? "\"" + formatIso8601(*stats.earliestStartUtc) + "\"" : "null";
+        out += ",\"latest\":";
+        out += stats.latestEndUtc ? "\"" + formatIso8601(*stats.latestEndUtc) + "\"" : "null";
+        out += "}\n";
+        return out;
+    }
+
+    const std::string separator = format == OutputFormat::Csv ? "," : "\t";
+    std::string out = options.header ? "metric" + separator + "value\n" : "";
+    const std::vector<std::pair<std::string, std::string>> machineMetrics = {
+        {"total", std::to_string(stats.total)},
+        {"visible", std::to_string(stats.visible)},
+        {"hidden", std::to_string(stats.hidden)},
+        {"event", std::to_string(stats.byType[static_cast<size_t>(EventType::Event)])},
+        {"sleep", std::to_string(stats.byType[static_cast<size_t>(EventType::Sleep)])},
+        {"wake", std::to_string(stats.byType[static_cast<size_t>(EventType::Wake)])},
+        {"alarm", std::to_string(stats.byType[static_cast<size_t>(EventType::Alarm)])},
+        {"upcoming", std::to_string(stats.upcoming)},
+        {"ongoing", std::to_string(stats.ongoing)},
+        {"past", std::to_string(stats.past)},
+        {"scheduled_seconds", std::to_string(stats.scheduledSeconds)},
+        {"conflict_pairs", std::to_string(stats.conflictPairs)},
+        {"earliest", stats.earliestStartUtc ? formatIso8601(*stats.earliestStartUtc) : ""},
+        {"latest", stats.latestEndUtc ? formatIso8601(*stats.latestEndUtc) : ""},
+    };
+    for (const auto &[name, value] : machineMetrics) {
+        if (format == OutputFormat::Csv) {
+            out += csvField(name) + "," + csvField(value) + "\n";
+        } else {
+            out += tsvField(name) + "\t" + tsvField(value) + "\n";
+        }
+    }
+    return out;
+}
+
+std::string formatDiagnostics(const Diagnostics &diagnostics, OutputFormat format,
+                              const FormatOptions &options) {
+    // Same rule as Diagnostics::healthy(), computed locally so the renderer
+    // does not need to link the diagnostics module (and sqlite) just to print.
+    bool healthy = true;
+    for (const DiagnosticCheck &entry : diagnostics.checks) {
+        if (entry.status != CheckStatus::Ok) {
+            healthy = false;
+            break;
+        }
+    }
+
+    if (format == OutputFormat::Text) {
+        std::string out;
+        for (const DiagnosticCheck &entry : diagnostics.checks) {
+            out += "[";
+            out += statusLabel(entry.status);
+            out += "] ";
+            out += entry.name;
+            out += ": ";
+            out += entry.detail;
+            out.push_back('\n');
+        }
+        out += healthy ? "healthy: yes\n" : "healthy: no\n";
+        return out;
+    }
+    if (format == OutputFormat::Table) {
+        static const Cells headers = {"STATUS", "CHECK", "DETAIL"};
+        static const std::vector<bool> alignment = {false, false, false};
+        std::vector<TableRow> rows;
+        rows.reserve(diagnostics.checks.size());
+        for (const DiagnosticCheck &entry : diagnostics.checks) {
+            rows.push_back({{statusLabel(entry.status), entry.name, entry.detail}, alignment});
+        }
+        const std::string full = renderTable(headers, rows, alignment);
+        if (options.header) {
+            return full;
+        }
+        const size_t firstNewline = full.find('\n');
+        return firstNewline == std::string::npos ? std::string() : full.substr(firstNewline + 1);
+    }
+    if (format == OutputFormat::Json) {
+        std::string out = healthy ? "{\"healthy\":true,\"checks\":["
+                                  : "{\"healthy\":false,\"checks\":[";
+        for (size_t i = 0; i < diagnostics.checks.size(); ++i) {
+            const DiagnosticCheck &entry = diagnostics.checks[i];
+            if (i != 0) {
+                out += ",";
+            }
+            out += "{\"name\":\"" + jsonEscape(entry.name) + "\",\"status\":\"" +
+                   statusLabel(entry.status) + "\",\"detail\":\"" + jsonEscape(entry.detail) +
+                   "\"}";
+        }
+        out += "]}\n";
+        return out;
+    }
+
+    const std::string separator = format == OutputFormat::Csv ? "," : "\t";
+    std::string out = options.header ? "status" + separator + "check" + separator + "detail\n" : "";
+    for (const DiagnosticCheck &entry : diagnostics.checks) {
+        if (format == OutputFormat::Csv) {
+            out += csvField(statusLabel(entry.status)) + "," + csvField(entry.name) + "," +
+                   csvField(entry.detail) + "\n";
+        } else {
+            out += tsvField(statusLabel(entry.status)) + "\t" + tsvField(entry.name) + "\t" +
+                   tsvField(entry.detail) + "\n";
         }
     }
     return out;

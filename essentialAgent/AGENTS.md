@@ -140,6 +140,8 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   interval functions over a vector of events, tested without a database.
   `EventType::Alarm` rows are reminders, not busy blocks, and a hidden row still
   alarms — hiding is a display choice.
+- **`doctor` is read-only.** `diagnose` never migrates, repairs, or deletes; it
+  reports and lets a human decide. Its exit code is `0` all-ok, `1` warn/fail.
 - **A partial edit changes only supplied flags.** Carry a `*Given` flag in
   `Args` for every editable field; a default value cannot mean "leave alone".
 - Every comment that explains a *surprising* choice is worth its weight. Every

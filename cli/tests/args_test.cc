@@ -35,6 +35,8 @@ void testVerbs() {
     assert(parse({"conflicts"}).verb == Verb::Conflicts);
     assert(parse({"free"}).verb == Verb::Free);
     assert(parse({"alarms"}).verb == Verb::Alarms);
+    assert(parse({"stats"}).verb == Verb::Stats);
+    assert(parse({"doctor"}).verb == Verb::Doctor);
     assert(parse({"show"}).verb == Verb::Show);
     assert(parse({"rm"}).verb == Verb::Remove);
     assert(parse({"remove"}).verb == Verb::Remove);
@@ -204,6 +206,31 @@ void testIntelligenceFlags() {
     assert(!parse({"show", "5", "--type", "sleep"}).error.empty());
 }
 
+void testStatsAndDoctorFlags() {
+    const Args stats = parse({"stats", "--from", "2026-10-01", "--to", "2026-11-01", "--type",
+                              "sleep", "--visible"});
+    assert(stats.error.empty());
+    assert(stats.verb == Verb::Stats);
+    assert(stats.fromGiven && stats.from == "2026-10-01");
+    assert(stats.toGiven && stats.to == "2026-11-01");
+    assert(stats.typeGiven && stats.type == "sleep");
+    assert(stats.visibleOnly);
+
+    const Args doctor = parse({"doctor", "--db", "/tmp/x.db", "--format", "json"});
+    assert(doctor.error.empty());
+    assert(doctor.verb == Verb::Doctor);
+    assert(doctor.dbPath == "/tmp/x.db");
+    assert(doctor.format == "json");
+
+    // stats has no ordering/pagination; doctor has no query flags at all.
+    assert(!parse({"stats", "--limit", "1"}).error.empty());
+    assert(!parse({"stats", "--sort", "start"}).error.empty());
+    assert(!parse({"stats", "--search", "x"}).error.empty());
+    assert(!parse({"doctor", "--from", "today"}).error.empty());
+    assert(!parse({"doctor", "--type", "sleep"}).error.empty());
+    assert(!parse({"doctor", "--visible"}).error.empty());
+}
+
 void testHelpTopics() {
     const Args named = parse({"help", "edit"});
     assert(named.verb == Verb::Help && named.helpTopic == "edit");
@@ -362,6 +389,7 @@ int main() {
     testSearchPositional();
     testQueryOnlyFlagsRejectedOnMutation();
     testIntelligenceFlags();
+    testStatsAndDoctorFlags();
     testHolidaysVerb();
     testUsageErrors();
     std::printf("args_test: all assertions passed\n");

@@ -184,6 +184,70 @@ void testIntelligenceFormats() {
            std::string::npos);
 }
 
+void testStatsAndDiagnosticsFormats() {
+    CalendarStats stats;
+    stats.total = 5;
+    stats.visible = 4;
+    stats.hidden = 1;
+    stats.byType = {2, 1, 1, 1};
+    stats.upcoming = 2;
+    stats.ongoing = 1;
+    stats.past = 2;
+    stats.scheduledSeconds = 12 * 60 * 60;
+    stats.conflictPairs = 1;
+    stats.earliestStartUtc = instant("2026-10-16T09:00:00Z");
+    stats.latestEndUtc = instant("2026-10-17T07:00:00Z");
+
+    assert(formatStats(stats, OutputFormat::Text, {}) ==
+           "total       5\n"
+           "visible     4\n"
+           "hidden      1\n"
+           "event       2\n"
+           "sleep       1\n"
+           "wake        1\n"
+           "alarm       1\n"
+           "upcoming    2\n"
+           "ongoing     1\n"
+           "past        2\n"
+           "scheduled   12h\n"
+           "conflicts   1\n"
+           "earliest    2026-10-16T09:00:00Z\n"
+           "latest      2026-10-17T07:00:00Z\n");
+    assert(formatStats(stats, OutputFormat::Json, {}) ==
+           "{\"total\":5,\"visible\":4,\"hidden\":1,\"by_type\":{\"event\":2,"
+           "\"sleep\":1,\"wake\":1,\"alarm\":1},\"upcoming\":2,\"ongoing\":1,"
+           "\"past\":2,\"scheduled_seconds\":43200,\"conflict_pairs\":1,"
+           "\"earliest\":\"2026-10-16T09:00:00Z\","
+           "\"latest\":\"2026-10-17T07:00:00Z\"}\n");
+    const std::string statsCsv = formatStats(stats, OutputFormat::Csv, {});
+    assert(statsCsv.rfind("metric,value\n", 0) == 0);
+    assert(statsCsv.find("scheduled_seconds,43200\n") != std::string::npos);
+    assert(statsCsv.find("latest,2026-10-17T07:00:00Z\n") != std::string::npos);
+
+    CalendarStats empty;
+    assert(formatStats(empty, OutputFormat::Json, {}).find("\"earliest\":null") !=
+           std::string::npos);
+
+    Diagnostics report;
+    report.checks = {
+        DiagnosticCheck{"integrity", CheckStatus::Ok, "ok"},
+        DiagnosticCheck{"modified", CheckStatus::Warn, "meta.modified_utc is missing"},
+    };
+    assert(formatDiagnostics(report, OutputFormat::Text, {}) ==
+           "[ok] integrity: ok\n"
+           "[warn] modified: meta.modified_utc is missing\n"
+           "healthy: no\n");
+    assert(formatDiagnostics(report, OutputFormat::Json, {}) ==
+           "{\"healthy\":false,\"checks\":["
+           "{\"name\":\"integrity\",\"status\":\"ok\",\"detail\":\"ok\"},"
+           "{\"name\":\"modified\",\"status\":\"warn\","
+           "\"detail\":\"meta.modified_utc is missing\"}]}\n");
+    const std::string diagnosticsCsv = formatDiagnostics(report, OutputFormat::Csv, {});
+    assert(diagnosticsCsv.rfind("status,check,detail\n", 0) == 0);
+    assert(diagnosticsCsv.find("warn,modified,meta.modified_utc is missing\n") !=
+           std::string::npos);
+}
+
 } // namespace
 
 int main() {
@@ -195,6 +259,7 @@ int main() {
     testTable();
     testHolidays();
     testIntelligenceFormats();
+    testStatsAndDiagnosticsFormats();
     std::printf("format_test: all assertions passed\n");
     return 0;
 }

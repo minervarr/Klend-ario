@@ -528,6 +528,85 @@ int main() {
     assert(run({"conflicts", "--db", intelDb, "--type", "banana"}) == kExitUsage);
     assert(run({"list", "--db", intelDb, "--min-duration", "30m"}) == kExitUsage);
 
+    // ---------------------------------------------------------------------
+    // Stage 5b: stats and doctor.
+    // ---------------------------------------------------------------------
+#ifndef _WIN32
+    // A previous aborted run may have left the fake conflict copy behind.
+    std::remove("klend_e2e_intel.sync-conflict-20261016-101500-ABCDEF.db");
+    {
+        // All rows: 7 events, 2 hidden, 4 event/2 sleep/1 alarm, 4 conflict
+        // pairs (A/B, B/C, A/Sleep, Sleep/B; the reminder row is ignored).
+        const Capture stats = runCaptured({"stats", "--db", intelDb, "--format", "csv"});
+        assert(stats.code == kExitOk);
+        assert(stats.output.find("total,7\n") != std::string::npos);
+        assert(stats.output.find("visible,5\n") != std::string::npos);
+        assert(stats.output.find("hidden,2\n") != std::string::npos);
+        assert(stats.output.find("event,4\n") != std::string::npos);
+        assert(stats.output.find("sleep,2\n") != std::string::npos);
+        assert(stats.output.find("wake,0\n") != std::string::npos);
+        assert(stats.output.find("alarm,1\n") != std::string::npos);
+        assert(stats.output.find("scheduled_seconds,48600\n") != std::string::npos);
+        assert(stats.output.find("conflict_pairs,4\n") != std::string::npos);
+        assert(stats.output.find("earliest,2026-10-16T09:00:00Z\n") != std::string::npos);
+        assert(stats.output.find("latest,2026-10-17T07:00:00Z\n") != std::string::npos);
+    }
+    {
+        const Capture visible = runCaptured(
+            {"stats", "--db", intelDb, "--visible", "--format", "csv"});
+        assert(visible.code == kExitOk);
+        assert(visible.output.find("total,5\n") != std::string::npos);
+        assert(visible.output.find("hidden,0\n") != std::string::npos);
+        assert(visible.output.find("conflict_pairs,2\n") != std::string::npos);
+    }
+    {
+        const Capture sleep = runCaptured(
+            {"stats", "--db", intelDb, "--type", "sleep", "--format", "csv"});
+        assert(sleep.code == kExitOk);
+        assert(sleep.output.find("total,2\n") != std::string::npos);
+        assert(sleep.output.find("event,0\n") != std::string::npos);
+        assert(sleep.output.find("scheduled_seconds,30600\n") != std::string::npos);
+    }
+    {
+        const Capture ranged = runCaptured(
+            {"stats", "--db", intelDb, "--from", "2026-10-16", "--to", "2026-10-17",
+             "--format", "json"});
+        assert(ranged.code == kExitOk);
+        assert(ranged.output.find("\"total\":7") != std::string::npos);
+        assert(ranged.output.find("\"conflict_pairs\":4") != std::string::npos);
+    }
+    {
+        const Capture doctor = runCaptured({"doctor", "--db", intelDb, "--format", "text"});
+        assert(doctor.code == kExitOk);
+        assert(doctor.output.find("[ok] integrity: ok") != std::string::npos);
+        assert(doctor.output.find("healthy: yes") != std::string::npos);
+    }
+    {
+        // A conflict copy is a real warning: doctor must surface it and exit 1.
+        const char *conflict =
+            "klend_e2e_intel.sync-conflict-20261016-101500-ABCDEF.db";
+        {
+            std::ofstream out(conflict);
+            out << "not a database";
+        }
+        const Capture doctor = runCaptured({"doctor", "--db", intelDb, "--format", "json"});
+        assert(doctor.code == kExitError);
+        assert(doctor.output.find("\"healthy\":false") != std::string::npos);
+        assert(doctor.output.find("\"name\":\"sync\"") != std::string::npos);
+        assert(doctor.output.find("\"status\":\"warn\"") != std::string::npos);
+        std::remove(conflict);
+    }
+    {
+        // Once the copy is gone, the same database is healthy again.
+        const Capture doctor = runCaptured({"doctor", "--db", intelDb, "--format", "text"});
+        assert(doctor.code == kExitOk);
+    }
+#endif
+
+    assert(run({"stats", "--db", intelDb, "--limit", "1"}) == kExitUsage);
+    assert(run({"stats", "--db", intelDb, "--sort", "start"}) == kExitUsage);
+    assert(run({"doctor", "--db", intelDb, "--from", "today"}) == kExitUsage);
+
     std::remove(intelDb);
 
     // ---------------------------------------------------------------------

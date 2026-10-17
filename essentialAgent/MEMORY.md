@@ -103,6 +103,8 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI conflicts | Pairwise half-open overlaps. `EventType::Alarm` is a reminder, not a block, so it is ignored; touching endpoints and zero-length events never conflict. A triple overlap is three pairs. Hidden rows are filtered by the caller |
 | CLI free | Merge busy intervals, clamp to the query range, emit gaps ≥ `--min-duration` (default 30m). Alarm rows never block; hidden rows only block with `--include-hidden` |
 | CLI alarms | Upcoming T-offset + T=0 triggers, sorted by fire time. **Hidden rows are included by default**: `hidden` is a weekly-view choice, not a schedule cancellation. Events are scanned unbounded because an offset can move a trigger outside the event's own range |
+| CLI stats | Default all time / all rows; `--from`/`--to`/`--type`/visibility narrow the set. `scheduled_seconds` is a **sum**, so overlaps double-count; `conflict_pairs` says how many overlaps exist. Alarm rows count in totals but not conflicts |
+| CLI doctor | Read-only. Checks integrity, schema version, `modified_utc`, Syncthing copies and interval sanity; exit `1` on any warn/fail. It never migrates, fixes, or deletes |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
@@ -204,6 +206,13 @@ These are truths this workspace already paid for. Do not relearn them.
   fire. That is why `conflicts`/`free` default to visible rows while `alarms`
   defaults to all rows; `--visible`/`--include-hidden` makes either choice
   explicit.
+- **A sum is not a union.** `stats.scheduled_seconds` adds event durations, so
+  two overlapping events double-count. That is deliberate: it answers "how much
+  event time is on the calendar", while `conflict_pairs` says how much of it
+  collides. Computing a union would hide the overlap instead of reporting it.
+- **A doctor must be read-only.** `diagnose` never migrates or repairs: a user
+  runs it to decide what to do. The exit code is the script contract (`0` all
+  ok, `1` warn/fail), and the report names the file/paths a human must look at.
 - **Migrations are additive and refused in the wrong direction.** The schema
   version lives in `meta.schema_version` and is checked on every open. Steps run
   upward only, in order. A database written by a *newer* build is **refused**
@@ -299,6 +308,11 @@ enough to keep, because both were decided against an obvious alternative.
   itself.
 - A conflict copy is a **separate file**, never opened or read; resolving one is
   a human's call (rename it in, or delete it).
+- **A relative `--db` has no parent component.** `arc::fs::parent("klend_ario.db")`
+  is empty, and listing `""` fails; the first version silently found no conflict
+  copies for every relative path. `syncConflictCopies()` now treats an empty
+  parent as `"."`. Tests run with relative temp names, so this was found by the
+  doctor e2e, not by the pure matcher.
 
 ## 8. MCP (Phase 5)
 

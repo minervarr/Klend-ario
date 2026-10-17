@@ -29,7 +29,13 @@ std::vector<std::string> conflictCopiesFrom(std::string_view dbPath,
 }
 
 std::vector<std::string> syncConflictCopies(const std::string &dbPath) {
-    auto entries = arc::fs::listDir(arc::fs::parent(dbPath));
+    std::string parent = arc::fs::parent(dbPath);
+    // A bare filename ("klend_ario.db") has no parent component. Listing ""
+    // fails, which silently hid conflict copies for every relative --db path.
+    if (parent.empty()) {
+        parent = ".";
+    }
+    auto entries = arc::fs::listDir(parent);
     if (!entries) {
         return {};
     }

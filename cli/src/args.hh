@@ -33,6 +33,8 @@ enum class Verb {
     Conflicts,
     Free,
     Alarms,
+    Stats,
+    Doctor,
     Show,
     Remove,
     Holidays,

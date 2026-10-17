@@ -75,9 +75,11 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Query filters/sort/pagination (`EventQuery` → SQL) | `core/tests/query_test.cc` | `src/db.cc src/schema.cc src/query.cc src/event.cc` + `sqlite3` | in-memory DB |
 | Pairwise conflicts (`findConflicts`) | `core/tests/conflict_test.cc` | `src/conflict.cc src/event.cc` | none |
 | Free-slot intervals (`freeSlots`) | `core/tests/free_test.cc` | `src/free.cc src/event.cc` | none |
+| Summary counts (`computeStats`) | `core/tests/stats_test.cc` | `src/stats.cc src/conflict.cc src/event.cc` | none |
+| Doctor checks (`diagnose`, `integrityCheck`) | `core/tests/diagnostics_test.cc` | `src/diagnostics.cc src/db.cc src/schema.cc src/query.cc src/conflict.cc src/sync.cc` + `sqlite3` | in-memory DB |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
-| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
+| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 ### Time and day model
@@ -152,6 +154,26 @@ reaches core (or a hidden-policy regression) fails there too, not only in
   trigger carries `eventStartUtc` so the text formatter can print `T-10m`
   without a second lookup.
 
+### CLI summary and health
+
+`stats_test` pins the summary over a fixed clock; `diagnostics_test` pins the
+doctor over an in-memory database:
+
+- `upcoming` is `start > now`, `ongoing` is `start <= now < end`, `past` is
+  `end <= now`. A zero-length event exactly at `now` is **past**, not ongoing.
+- `scheduledSeconds` is a SUM of durations (overlaps double-count);
+  `conflictPairs` uses the same rule as `conflicts`. Alarm rows count in totals
+  but not in conflict pairs.
+- `earliestStartUtc`/`latestEndUtc` are empty for an empty set, not zero.
+- Doctor checks are all `Ok` on a fresh in-memory DB: integrity `ok`, schema
+  `v1`, `modified` "no writes yet", sync skipped, events `0`. A write makes the
+  marker `Ok`; a missing/malformed marker is a Warn; a wrong schema version is
+  a Fail.
+- The CLI doctor is read-only and exits `1` on any warn/fail. The e2e test
+  creates a fake `*.sync-conflict-*` file beside a relative temp database and
+  asserts the report names it and the exit code changes; this is what caught
+  the empty-parent bug in `syncConflictCopies`.
+
 ### CLI rendering
 
 `format_test` asserts the actual bytes for every format, so the user-visible
@@ -170,7 +192,7 @@ DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 23 suites, not 11. The CLI's
+That is why the parent currently reports 25 suites, not 11. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 
