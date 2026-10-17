@@ -21,16 +21,19 @@ add_library(klend_ario_core STATIC
     src/schema.cc
     src/event.cc
     src/alarm.cc
-    src/sync.cc)
+    src/sync.cc
+    src/holidays.cc)
 
 target_include_directories(klend_ario_core
     PUBLIC  include
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # arc_fs is PUBLIC: db.hh uses arc::Result, and callers of core naturally see
-# the same storage vocabulary. sqlite3mc is PRIVATE — it is an implementation
-# detail behind the Db boundary.
+# the same storage vocabulary. pe_holiday_calc is PUBLIC because
+# klend_ario/holidays.hh exposes its Holiday/Date types. sqlite3mc is PRIVATE —
+# it is an implementation detail behind the Db boundary.
 target_link_libraries(klend_ario_core
     PUBLIC  arc_fs
+            pe_holiday_calc
     PRIVATE sqlite3mc)
 
 if(MSVC)
@@ -69,3 +72,11 @@ klend_ario_add_test(sync_test
 klend_ario_add_test(alarm_test
     SOURCES  tests/alarm_test.cc src/alarm.cc src/event.cc
     INCLUDES include)
+
+# holidays_test — the std::optional -> arc::Result boundary over the
+# pe-holiday-calc library. Links the adapter source plus the library, not the
+# whole core (TESTING.md: narrow is the point).
+klend_ario_add_test(holidays_test
+    SOURCES  tests/holidays_test.cc src/holidays.cc
+    INCLUDES include
+    LIBS     pe_holiday_calc arc_util)

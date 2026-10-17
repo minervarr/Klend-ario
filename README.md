@@ -46,7 +46,7 @@ mcp/     the local MCP server (JSON-RPC over stdio); links core
 alarm/   the alarm engine (libnotify, or a log); links core
 gui/     the weekly view — pure geometry now, vk_canvas renderer later (Phase 4)
 android/ later (Phase 7)
-libs/    firstparty submodules (archive_engine) + vendored thirdparty (sqlite3mc)
+libs/    firstparty (archive_engine, pe-holiday-calc) + vendored thirdparty (sqlite3mc)
 scripts/ the zipapp build tool
 ```
 

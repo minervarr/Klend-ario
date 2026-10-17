@@ -96,6 +96,22 @@ ctest --test-dir build --output-on-failure      # all pass
 
 Newest first. One line per meaningful change.
 
+- **pe-holiday-calc integrated into core.** Root CMake adds
+  `libs/firstparty/pe-holiday-calc` and `klend_ario_core` links
+  `pe_holiday_calc`. `core/include/klend_ario/holidays.hh` exposes
+  `arc::Result` queries (`holidaysFor`, `isHoliday`, `holidayOn`), adapting the
+  library's `std::optional` answers in `core/src/holidays.cc`.
+  `core/tests/holidays_test.cc` proves the 2026 Peru calendar, case/trim lookup,
+  the *día no laborable* negative, and the unknown-country error. All 18 CTest
+  suites pass (the child's 7 suites now run in the parent too). The NDK build
+  remains open; see `MEMORY.md` §4.
+
+- **pe-holiday-calc is now a pinned submodule.** `.gitmodules` registers
+  `libs/firstparty/pe-holiday-calc` at
+  `https://codeberg.org/minervarr/pe-holiday-calc`, pinned to the child's
+  `master`. A fresh recursive clone can now configure without a nested checkout
+  standing in for it.
+
 - **Week counter added to core** (`weekOfYearUtc`): the Sunday-based week-of-year
   the weekly view shows (merged.md §5.2), asserted in `event_test`. It is the US
   reading — week 1 contains 1 January and may be short — chosen because the

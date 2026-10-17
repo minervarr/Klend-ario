@@ -34,6 +34,18 @@ set(ARC_BUILD_FS_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory(libs/firstparty/archive_engine/core archive_engine_build)
 
 # ---------------------------------------------------------------------------
+# pe-holiday-calc — first-party C++17 holiday library (Peru today).
+#
+# Built from the nested checkout at libs/firstparty/pe-holiday-calc. Its own
+# suites run through the parent's CTest; its example is not built here.
+# Promoting the directory to a pinned git submodule is recorded in
+# essentialAgent/MEMORY.md §4.
+# ---------------------------------------------------------------------------
+set(PE_HOLIDAY_BUILD_TESTS ${KLEND_BUILD_TESTS} CACHE BOOL "" FORCE)
+set(PE_HOLIDAY_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(libs/firstparty/pe-holiday-calc pe_holiday_calc_build)
+
+# ---------------------------------------------------------------------------
 # sqlite3mc — SQLite3MultipleCiphers amalgamation (libs/thirdparty/sqlite3mc).
 #
 # The storage engine, and the Phase 3 page-level encryption. Vendored rather

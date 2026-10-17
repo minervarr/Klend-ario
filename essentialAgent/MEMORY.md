@@ -65,6 +65,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | DB location | `arc::fs::Layout.state` — machine data, never `home`/`data` |
 | Error type | `arc::Result<T>` / `arc::Error` from `arc_util` |
 | `archive_engine` | git submodule at `libs/firstparty/archive_engine` |
+| `pe-holiday-calc` | git submodule at `libs/firstparty/pe-holiday-calc` (Codeberg, pinned to the child's `master`); first-party C++17 holiday library. `klend_ario_core` links `pe_holiday_calc` and adapts its `std::optional` answers to `arc::Result` in `core/src/holidays.cc` |
 | Tests | plain `assert()` binaries, registered with **CTest** |
 | CLI parsing | hand-rolled, `std::string_view` + `std::vector`, std-only |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |

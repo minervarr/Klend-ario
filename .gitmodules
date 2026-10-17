@@ -10,3 +10,6 @@
 [submodule "libs/firstparty/framework/Vk_Canvas_Lb_LAW"]
 	path = libs/firstparty/framework/Vk_Canvas_Lb_LAW
 	url = https://github.com/minervarr/Vk_Canvas_Lb_LAW
+[submodule "libs/firstparty/pe-holiday-calc"]
+	path = libs/firstparty/pe-holiday-calc
+	url = https://codeberg.org/minervarr/pe-holiday-calc

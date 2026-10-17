@@ -33,6 +33,7 @@ are shared, and changes belong in their own repos first (`MEMORY.md` §5).
 | `/home/nerio/code/minervarr/git_Wrapper` | The stdlib-only Python **zipapp** build tool (`scripts/`) we port for `scripts/` here. Its `docs/USAGE.md` explains the shape. |
 | `libs/firstparty/framework/App_shell` | The Host/AppView seam + per-app paths/metrics. Phase 4 (GUI) only. |
 | `libs/firstparty/framework/Vk_Canvas_Lb_LAW` | The Vulkan 2D canvas + text renderer. Phase 4 (GUI) only. |
+| `libs/firstparty/pe-holiday-calc` | First-party C++17 Peru holiday library consumed by core (`pe_holiday_calc`), pinned as a submodule (Codeberg). Its own `essentialAgent/` governs changes inside it. |
 
 ## How this folder is wired into OpenCode
 

@@ -72,6 +72,7 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
 | CLI end-to-end (later) | `cli/tests/` | `klend_ario_core` | temp DB |
+| Holiday boundary (`std::optional` → `arc::Result`) | `core/tests/` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 **Narrow is the point.** A pure-logic test should link its one source file and
 nothing else — if it needs more, the source picked up a dependency it should not

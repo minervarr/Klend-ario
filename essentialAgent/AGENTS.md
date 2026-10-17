@@ -20,6 +20,7 @@ Klend-ario/
 ├── libs/
 │   ├── firstparty/
 │   │   ├── archive_engine/       # submodule: arc_util, arc_fs (we use arc_fs)
+│   │   ├── pe-holiday-calc/      # submodule: C++17 holiday library (Peru)
 │   │   └── framework/            # submodules: App_shell, Vk_Canvas_Lb_LAW (GUI)
 │   └── thirdparty/               # vendored deps (sqlite3mc amalgamation)
 ├── core/                         # ALL logic. portable. include/ src/ tests/
@@ -51,7 +52,7 @@ Klend-ario/
 6. **CMake + Ninja only.** No Make wrappers, no other generators, no `uv` as a
    build dependency (the zipapp may *use* Python, the app may not).
 7. **Only std, plus the C `sqlite3` API (via the vendored SQLite3MultipleCiphers),
-   plus `arc_fs`/`arc_util`.** Adding a
+   plus our first-party `pe_holiday_calc`, plus `arc_fs`/`arc_util`.** Adding a
    third-party dependency is a decision to write in `MEMORY.md` first.
 
 ## 3. Build & test
