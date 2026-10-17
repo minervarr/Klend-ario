@@ -31,7 +31,8 @@ Klend-ario/
 ├── android/                      # later: JNI + gradle (see MEMORY §5)
 ├── gui/                          # later: vk_canvas + app_shell
 ├── assets/fonts/                 # submodule
-└── scripts/                      # stdlib-only Python zipapp build tool
+├── scripts/                      # stdlib-only Python zipapp build tool
+└── demo/                         # permanent showcase; consumes built binaries
 ```
 
 ## 2. Non-negotiable invariants
@@ -81,6 +82,10 @@ Klend-ario/
 14. **Notes reference events; they do not copy them.** A future note links to
     `events.id`. Sleep is a first-class dynamic `sleep` event: default 10 hours,
     auto-generated, hideable/showable automatically — not a GUI special case.
+15. **The demo is a consumer.** `demo/` drives the built binaries through their
+    public CLI/MCP surfaces. It never links `core/`, never reimplements calendar
+    logic, and never writes to the real `state` database: every run gets a
+    throwaway `--db`. See `DEMO.md`.
 
 ## 3. Build & test
 
@@ -94,6 +99,9 @@ ctest --test-dir build --output-on-failure
 
 # run the CLI
 ./build/cli/klend_ario_cli --help
+
+# run the permanent showcase (throwaway DB; needs a built CLI)
+python3 demo/klend_ario_demo.py
 ```
 
 The zipapp build tool (once Phase 0 is done) is the friendly front end:
@@ -131,6 +139,16 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
 - **CLI output** is rendered by the pure functions in `cli/src/format.cc`
   (text/table/json/csv/tsv) and printed once. Do not `printf` rows from inside a
   command; that is what made the visible contract untestable.
+- **The demo consumes; it does not implement.** `demo/klend_ario_demo.py` is
+  stdlib-only Python that shells out to the built binaries. Parse
+  `--format json`/CSV/JSONL for values; human text is displayed, not scraped
+  into logic.
+- **A demo run is disposable.** One helper injects `--db <temp>` into every
+  database-backed subprocess; the default `state` database is never a target.
+  `--keep` is the only way to preserve a run.
+- **Expected failures are asserted.** The demo checks exit `2` for usage errors
+  and exit `1` for runtime errors (plaintext open of an encrypted DB, a bad
+  import); an unexpected code stops the run.
 - **Queries are a core value.** Build an `EventQuery` and call
   `Db::queryEvents`; do not filter a `listEvents` result in a frontend. Text is
   bound, `ORDER BY` is a whitelist, and the half-open overlap rule lives in one
@@ -171,7 +189,9 @@ A change is done when:
 4. Any decision or gotcha it introduces is written into `essentialAgent/`.
 5. If it captures or changes a requirement, `REQUIREMENTS.md`, `MEMORY.md`, and
    `PLAN.md` are updated in the same change.
-6. It is committed with `./git_wrapper` (below).
+6. If it changes a CLI verb, flag, or output shape, `demo/klend_ario_demo.py`
+   still exits `0` — it is the end-to-end showcase.
+7. It is committed with `./git_wrapper` (below).
 
 ## 6. Git
 
@@ -202,3 +222,7 @@ A change is done when:
 - Do not edit `libs/firstparty/pe-holiday-calc` from here either. It is its own
   repository with its own `essentialAgent/`; a change there is made, tested, and
   pushed in the child, then its pin is advanced here.
+- Do not let the demo open the default `state` database, link `core/`, or add a
+  third-party Python dependency.
+- Do not treat the demo as a substitute for `ctest`; it is a showcase and smoke
+  test, not the correctness gate.

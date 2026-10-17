@@ -111,6 +111,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI database access | `doctor` and `export` use `Db::openReadOnly`/`openEncryptedReadOnly`: no create, no migrate, no writes. Explicit `--db` on a read-only view must exist; the default path may be created for first use |
 | CLI status | Feature-complete and frozen 2026-10-17. New work is maintenance only; GUI Phase 4 is next |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
+| Demo | Permanent `demo/klend_ario_demo.py`: stdlib-only Python consumer of the built binaries; every run uses a throwaway temp `--db`, never the real `state` DB, and never links `core/`. See `DEMO.md` |
 | Build system | **CMake + Ninja only** |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
 | Scope | **Desktop-first**: Linux is the active platform; Android is deferred (Phase 7) |

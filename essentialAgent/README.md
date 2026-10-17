@@ -16,7 +16,11 @@ code in **Klend-ario**. None of it ships to a user. It is the operating manual.
 | 3 | [`AGENTS.md`](AGENTS.md) | The rules: conventions, invariants, commands, definition of done. |
 | 4 | [`PLAN.md`](PLAN.md) | Phases, the exact scaffold manifest, and current status. |
 | 5 | [`TESTING.md`](TESTING.md) | How tests are written, registered, and run. |
-| 6 | [`skills/klend-ario/SKILL.md`](skills/klend-ario/SKILL.md) | The repeatable build/test/feature workflow. |
+| 6 | [`DEMO.md`](DEMO.md) | The permanent showcase: clean-run contract, section list, verification. |
+| 7 | [`skills/klend-ario/SKILL.md`](skills/klend-ario/SKILL.md) | The repeatable build/test/feature workflow. |
+
+`DEMO.md` is a task spec for `demo/`, not a daily rule: it is linked from
+`AGENTS.md` and loaded on demand rather than in every session.
 
 Product background (not agent rules) is the repo's [`../merged.md`](../merged.md):
 *"Openseek — Final Plan (v3)"*, the calendar design this repository implements.

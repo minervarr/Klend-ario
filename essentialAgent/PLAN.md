@@ -100,6 +100,29 @@ again — see the status log.
 
 ---
 
+## Demo showcase (planned 2026-10-17)
+
+A permanent, stdlib-only Python consumer of the built binaries. It is **not a
+phase** and does not move one: it showcases the frozen CLI surface, exercises
+the MCP server and alarm daemon, and proves a run starts from zero every time.
+The contract is [`DEMO.md`](DEMO.md).
+
+- [x] **Spec** — `DEMO.md`: clean-run contract, section list, verification.
+- [ ] **Skeleton** — `demo/klend_ario_demo.py`: binary discovery, temp root,
+      one `--db` injection helper, narration, `--pause`/`--keep`/`--no-color`,
+      cleanup on exit/`SIGINT`/`SIGTERM`.
+- [ ] **CLI story** — setup, create, read, change, intelligence,
+      health/interop, Python parsing, completion, encryption.
+- [ ] **MCP + alarm** — JSON-RPC tour and a one-poll alarm; auto-skipped when
+      those binaries are not built.
+- [ ] **Close-out** — `demo/README.md`, root `README.md` pointer, two clean
+      runs, commit via `./git_wrapper`.
+
+The CLI is frozen; the demo is a consumer. A gap found here is a bug in the
+docs or in the demo, not a reason to add a verb.
+
+---
+
 ## Phase 0 — the exact scaffold
 
 Everything below is created **before feature code**, so a fresh session can build
@@ -193,6 +216,12 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Demo showcase planned (2026-10-17).** Added `essentialAgent/DEMO.md` and
+  wired it into `AGENTS.md`/`README.md` before writing code: a permanent,
+  stdlib-only Python consumer of the built binaries, with one throwaway
+  database per run, JSON for values, and expected-failure assertions. It is a
+  showcase and smoke test, not a CTest suite. No production code changed.
 
 - **CLI hardening, Stage 6c — audit close-out (2026-10-17).** Added
   `Db::openReadOnly`/`openEncryptedReadOnly`; `doctor` and `export` no longer

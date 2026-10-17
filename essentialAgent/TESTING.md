@@ -250,6 +250,14 @@ nothing else — if it needs more, the source picked up a dependency it should n
 have. Matrix_Player's `variants_test` states this explicitly; keep the same
 property here.
 
+## Demo showcase
+
+`demo/klend_ario_demo.py` is an **acceptance showcase**, not a CTest suite: it
+drives the built binaries against a throwaway database and narrates the public
+surface. It must exit `0` before a release, but `ctest` remains the correctness
+gate. It is not registered with CTest and must never write to the real `state`
+database; the contract is [`DEMO.md`](DEMO.md).
+
 ## Habits
 
 - A bug fix arrives with the assertion that would have caught it.

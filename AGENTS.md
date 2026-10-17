@@ -29,4 +29,7 @@ The non-negotiables, so they apply even before you read further:
   are planned post-MVP; see `essentialAgent/REQUIREMENTS.md`. Do not build ahead.
 - **Commit/push with `./git_wrapper`** — submodules first, single identity, no
   `Co-Authored-By` trailers.
+- **The demo is a consumer** — `demo/klend_ario_demo.py` drives the built
+  binaries with a throwaway `--db`; it never touches the real state DB, links
+  `core/`, or adds Python dependencies. See `essentialAgent/DEMO.md`.
 - **Stay in the current phase.** See `essentialAgent/PLAN.md`.
