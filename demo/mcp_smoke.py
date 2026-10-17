@@ -660,6 +660,43 @@ def check_read_only(harness: Harness) -> None:
         expect_no_trailing_output(rest, "read-only server")
         harness.ok("stdout: no trailing output after the read-only session")
 
+    missing = harness.tmp / "missing.db"
+    completed = subprocess.run(
+        [str(harness.server), "--db", str(missing), "--permissions", "read"],
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=harness.timeout,
+    )
+    expect(completed.returncode == 1, f"read-only missing DB exited {completed.returncode}")
+    expect(not missing.exists(), "a read-only server created the missing database")
+    expect("read-only server" in completed.stderr, f"missing DB hint absent: {completed.stderr!r}")
+    harness.ok("read-only: a missing database is reported, not created")
+
+
+def check_server_options(harness: Harness) -> None:
+    completed = subprocess.run(
+        [str(harness.server), "--permissions", "read,bogus"],
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=harness.timeout,
+    )
+    expect(completed.returncode == 2, f"unknown permission exited {completed.returncode}, want 2")
+    expect("unknown permission" in completed.stderr, f"unexpected stderr: {completed.stderr!r}")
+    harness.ok("--permissions: an unknown token is a usage error")
+
+    completed = subprocess.run(
+        [str(harness.server), "--version"],
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=harness.timeout,
+    )
+    expect(completed.returncode == 0, f"--version exited {completed.returncode}")
+    expect("klend_ario_mcp_server" in completed.stdout, f"unexpected version: {completed.stdout!r}")
+    harness.ok("--version")
+
 
 def expect_no_trailing_output(rest: bytes, label: str) -> None:
     text = rest.decode("utf-8", errors="replace")
@@ -735,6 +772,7 @@ def main(argv: list[str]) -> int:
         harness.ok("stdout: protocol frames only, no trailing output")
 
         check_read_only(harness)
+        check_server_options(harness)
     except Failure as exc:
         print(f"FAIL  {exc}", file=sys.stderr)
         return EXIT_ERROR
