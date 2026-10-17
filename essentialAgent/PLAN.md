@@ -100,7 +100,7 @@ again — see the status log.
 
 ---
 
-## Demo showcase (planned 2026-10-17)
+## Demo showcase (shipped 2026-10-17)
 
 A permanent, stdlib-only Python consumer of the built binaries. It is **not a
 phase** and does not move one: it showcases the frozen CLI surface, exercises
@@ -108,15 +108,17 @@ the MCP server and alarm daemon, and proves a run starts from zero every time.
 The contract is [`DEMO.md`](DEMO.md).
 
 - [x] **Spec** — `DEMO.md`: clean-run contract, section list, verification.
-- [ ] **Skeleton** — `demo/klend_ario_demo.py`: binary discovery, temp root,
+- [x] **Skeleton** — `demo/klend_ario_demo.py`: binary discovery, temp root,
       one `--db` injection helper, narration, `--pause`/`--keep`/`--no-color`,
       cleanup on exit/`SIGINT`/`SIGTERM`.
-- [ ] **CLI story** — setup, create, read, change, intelligence,
+- [x] **CLI story** — setup, create, read, change, intelligence,
       health/interop, Python parsing, completion, encryption.
-- [ ] **MCP + alarm** — JSON-RPC tour and a one-poll alarm; auto-skipped when
+- [x] **MCP + alarm** — JSON-RPC tour and a one-poll alarm; auto-skipped when
       those binaries are not built.
-- [ ] **Close-out** — `demo/README.md`, root `README.md` pointer, two clean
+- [x] **Close-out** — `demo/README.md`, root `README.md` pointer, two clean
       runs, commit via `./git_wrapper`.
+- [x] **Verified** — three clean runs, `--pause`, `--keep`, `--release`; no
+      `klend_ario_demo-*` directory left behind and no `state` database touched.
 
 The CLI is frozen; the demo is a consumer. A gap found here is a bug in the
 docs or in the demo, not a reason to add a verb.
@@ -216,6 +218,12 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **Demo showcase shipped (2026-10-17).** Added `demo/klend_ario_demo.py` and
+  `demo/README.md`: a stdlib-only, narrated tour of all 21 CLI verbs, the five
+  MCP tools and a one-poll alarm, with a throwaway database per run. Verified
+  with three clean runs plus `--pause`, `--keep` and `--release`; no temporary
+  directory was left behind and the real `state` database was never opened.
 
 - **Demo showcase planned (2026-10-17).** Added `essentialAgent/DEMO.md` and
   wired it into `AGENTS.md`/`README.md` before writing code: a permanent,

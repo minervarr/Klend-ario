@@ -123,6 +123,19 @@ bash|zsh|fish` prints a script for your shell.
 The CLI feature set is frozen as of 2026-10-17; new feature work goes to the
 GUI. Bug fixes and tests still belong here.
 
+## Demo
+
+The permanent end-to-end showcase drives the built binaries against a throwaway
+database and narrates every public surface:
+
+```bash
+python3 demo/klend_ario_demo.py
+python3 demo/klend_ario_demo.py --pause   # step through it
+```
+
+It never touches the real state database; `--keep` preserves the temporary
+directory for inspection. See [`demo/README.md`](demo/README.md).
+
 ## Layout
 
 ```
@@ -134,6 +147,7 @@ gui/     the weekly view — pure geometry now, vk_canvas renderer later (Phase 
 android/ later (Phase 7)
 libs/    firstparty (archive_engine, pe-holiday-calc) + vendored thirdparty (sqlite3mc)
 scripts/ the zipapp build tool
+demo/    the end-to-end CLI/MCP/alarm showcase (a consumer; see demo/README.md)
 ```
 
 Commits and pushes go through [`./git_wrapper`](essentialAgent/AGENTS.md) — never
