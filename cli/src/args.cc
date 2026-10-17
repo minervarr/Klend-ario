@@ -56,6 +56,12 @@ const char *verbName(Verb verb) {
         return "agenda";
     case Verb::Search:
         return "search";
+    case Verb::Conflicts:
+        return "conflicts";
+    case Verb::Free:
+        return "free";
+    case Verb::Alarms:
+        return "alarms";
     case Verb::Show:
         return "show";
     case Verb::Remove:
@@ -79,6 +85,21 @@ bool takesId(Verb verb) {
 bool isQueryVerb(Verb verb) {
     return verb == Verb::List || verb == Verb::Today || verb == Verb::Week ||
            verb == Verb::Next || verb == Verb::Agenda || verb == Verb::Search;
+}
+
+bool isIntelligenceVerb(Verb verb) {
+    return verb == Verb::Conflicts || verb == Verb::Free || verb == Verb::Alarms;
+}
+
+bool isRangeVerb(Verb verb) { return isQueryVerb(verb) || isIntelligenceVerb(verb); }
+
+bool isVisibilityVerb(Verb verb) { return isRangeVerb(verb); }
+
+bool isLimitVerb(Verb verb) { return isQueryVerb(verb) || isIntelligenceVerb(verb); }
+
+bool isTypeVerb(Verb verb) {
+    return verb == Verb::Add || verb == Verb::Edit || isQueryVerb(verb) ||
+           isIntelligenceVerb(verb);
 }
 
 } // namespace
@@ -116,6 +137,12 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             a.verb = Verb::Agenda;
         } else if (verb == "search") {
             a.verb = Verb::Search;
+        } else if (verb == "conflicts") {
+            a.verb = Verb::Conflicts;
+        } else if (verb == "free") {
+            a.verb = Verb::Free;
+        } else if (verb == "alarms") {
+            a.verb = Verb::Alarms;
         } else if (verb == "show") {
             a.verb = Verb::Show;
         } else if (verb == "rm" || verb == "remove") {
@@ -180,6 +207,34 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
         auto queryOnly = [&](const char *name) -> bool {
             if (!isQueryVerb(a.verb)) {
                 a.error = std::string(name) + " is only valid for query commands";
+                return false;
+            }
+            return true;
+        };
+        auto rangeOnly = [&](const char *name) -> bool {
+            if (!isRangeVerb(a.verb)) {
+                a.error = std::string(name) + " is not valid for this command";
+                return false;
+            }
+            return true;
+        };
+        auto visibilityOnly = [&](const char *name) -> bool {
+            if (!isVisibilityVerb(a.verb)) {
+                a.error = std::string(name) + " is not valid for this command";
+                return false;
+            }
+            return true;
+        };
+        auto limitOnly = [&](const char *name) -> bool {
+            if (!isLimitVerb(a.verb)) {
+                a.error = std::string(name) + " is not valid for this command";
+                return false;
+            }
+            return true;
+        };
+        auto typeOnly = [&](const char *name) -> bool {
+            if (!isTypeVerb(a.verb)) {
+                a.error = std::string(name) + " is not valid for this command";
                 return false;
             }
             return true;
@@ -249,6 +304,9 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.shiftGiven = true;
         } else if (token == "--type") {
+            if (!typeOnly("--type")) {
+                return a;
+            }
             if (!takeValue(a.type, "--type")) {
                 return a;
             }
@@ -274,7 +332,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.sortGiven = true;
         } else if (token == "--limit") {
-            if (!queryOnly("--limit")) {
+            if (!limitOnly("--limit")) {
                 return a;
             }
             if (!takeNonNegative(a.limit, "--limit")) {
@@ -297,6 +355,15 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
                 return a;
             }
             a.daysGiven = true;
+        } else if (token == "--min-duration") {
+            if (a.verb != Verb::Free) {
+                a.error = "--min-duration is only valid for free";
+                return a;
+            }
+            if (!takeValue(a.minDuration, "--min-duration")) {
+                return a;
+            }
+            a.minDurationGiven = true;
         } else if (token == "--min-importance") {
             if (!queryOnly("--min-importance")) {
                 return a;
@@ -330,28 +397,28 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.maxUrgencyGiven = true;
         } else if (token == "--visible") {
-            if (!queryOnly("--visible")) {
+            if (!visibilityOnly("--visible")) {
                 return a;
             }
             if (!takeVisibility(a.visibleOnly)) {
                 return a;
             }
         } else if (token == "--hidden-only") {
-            if (!queryOnly("--hidden-only")) {
+            if (!visibilityOnly("--hidden-only")) {
                 return a;
             }
             if (!takeVisibility(a.hiddenOnly)) {
                 return a;
             }
         } else if (token == "--include-hidden") {
-            if (!queryOnly("--include-hidden")) {
+            if (!visibilityOnly("--include-hidden")) {
                 return a;
             }
             if (!takeVisibility(a.includeHidden)) {
                 return a;
             }
         } else if (token == "--from") {
-            if (!queryOnly("--from")) {
+            if (!rangeOnly("--from")) {
                 return a;
             }
             if (!takeValue(a.from, "--from")) {
@@ -359,7 +426,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.fromGiven = true;
         } else if (token == "--to") {
-            if (!queryOnly("--to")) {
+            if (!rangeOnly("--to")) {
                 return a;
             }
             if (!takeValue(a.to, "--to")) {
@@ -486,6 +553,9 @@ std::string usage() {
            "  next       the next event still running or starting\n"
            "  agenda     the next N days from now\n"
            "  search     find text in titles and notes\n"
+           "  conflicts  find overlapping events\n"
+           "  free       find free slots in a range\n"
+           "  alarms     list upcoming alarm triggers\n"
            "  show       show one event by id\n"
            "  rm         delete one event by id\n"
            "  holidays   list a country's public holidays for a year\n"
@@ -503,6 +573,11 @@ std::string usage() {
            "  --min-urgency N --max-urgency N\n"
            "  --sort S  --limit N  --offset N\n"
            "  --visible | --hidden-only | --include-hidden\n"
+           "\n"
+           "intelligence options (conflicts/free/alarms):\n"
+           "  --from EXPR --to EXPR  --type T  --limit N\n"
+           "  --visible | --hidden-only | --include-hidden\n"
+           "  free also takes --min-duration D (default 30m)\n"
            "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"
@@ -609,6 +684,33 @@ std::string usageFor(std::string_view topic) {
                "  Quote a phrase. Hidden rows are included.\n"
                "\n" +
                queryOptionsUsage();
+    }
+    if (topic == "conflicts") {
+        return "usage: klend_ario_cli conflicts [--from EXPR] [--to EXPR] [--type T]\n"
+               "                               [--limit N] [--visible | --hidden-only |\n"
+               "                               --include-hidden]\n"
+               "\n"
+               "  Overlapping visible events in the range (default: today + 7 days).\n"
+               "  Touching endpoints and zero-length events do not conflict; alarm\n"
+               "  rows are reminders, not blocks. A triple overlap reports three pairs.\n";
+    }
+    if (topic == "free") {
+        return "usage: klend_ario_cli free [--from EXPR] [--to EXPR] [--min-duration D]\n"
+               "                          [--limit N] [--visible | --hidden-only |\n"
+               "                          --include-hidden]\n"
+               "\n"
+               "  Gaps between busy events (default: now + 7 days, minimum 30m).\n"
+               "  Overlapping events merge; hidden rows are not busy unless included.\n"
+               "  Alarm rows are reminders and never block time.\n";
+    }
+    if (topic == "alarms") {
+        return "usage: klend_ario_cli alarms [--from EXPR] [--to EXPR] [--type T]\n"
+               "                             [--limit N] [--visible | --hidden-only |\n"
+               "                             --include-hidden]\n"
+               "\n"
+               "  Upcoming triggers (default: now + 7 days), sorted by fire time.\n"
+               "  Hidden rows ARE included: hiding a sleep block does not cancel its\n"
+               "  alarm. Each event contributes T-offset (if set) and T=0.\n";
     }
     if (topic == "show") {
         return "usage: klend_ario_cli show <id>\n";

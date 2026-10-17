@@ -73,9 +73,11 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | User-facing instants/durations (`today`, `week+7d`, `90m`) | `core/tests/timeexpr_test.cc` | `src/timeexpr.cc src/event.cc` | none |
 | Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB |
 | Query filters/sort/pagination (`EventQuery` → SQL) | `core/tests/query_test.cc` | `src/db.cc src/schema.cc src/query.cc src/event.cc` + `sqlite3` | in-memory DB |
+| Pairwise conflicts (`findConflicts`) | `core/tests/conflict_test.cc` | `src/conflict.cc src/event.cc` | none |
+| Free-slot intervals (`freeSlots`) | `core/tests/free_test.cc` | `src/free.cc src/event.cc` | none |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
-| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
+| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 ### Time and day model
@@ -131,6 +133,25 @@ The e2e test captures stdout for the query verbs, so a filter that never
 reaches core (or a hidden-policy regression) fails there too, not only in
 `query_test`.
 
+### CLI intelligence
+
+`conflict_test` and `free_test` pin the two interval analyses:
+
+- Conflicts are pairwise and half-open: `start < other.end && end > other.start`.
+  Touching endpoints and zero-length events never conflict; a triple overlap
+  yields three pairs. `EventType::Alarm` rows are excluded because they are
+  reminders, not blocks.
+- Free slots merge busy intervals first, clamp them to `[from, to)`, and only
+  emit gaps at least `minDurationSeconds` long. A gap exactly equal to the
+  minimum is included; one second short is not. Alarm rows never block, and a
+  zero-length event does not remove time.
+- Hidden filtering is the caller's job in both functions. The CLI defaults
+  `conflicts`/`free` to visible rows and `alarms` to all rows, because hiding is
+  a view choice while an alarm is a schedule fact.
+- `alarms` reuses `alarmsIn` (T-offset then T=0, sorted by fire time). The
+  trigger carries `eventStartUtc` so the text formatter can print `T-10m`
+  without a second lookup.
+
 ### CLI rendering
 
 `format_test` asserts the actual bytes for every format, so the user-visible
@@ -149,7 +170,7 @@ DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 21 suites, not 11. The CLI's
+That is why the parent currently reports 23 suites, not 11. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

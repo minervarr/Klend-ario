@@ -30,6 +30,9 @@ enum class Verb {
     Next,
     Agenda,
     Search,
+    Conflicts,
+    Free,
+    Alarms,
     Show,
     Remove,
     Holidays,
@@ -99,6 +102,10 @@ struct Args {
     bool includeHidden = false;
     int days = 7; // agenda's window
     bool daysGiven = false;
+
+    // free
+    std::string minDuration = "30m"; // duration expression, verbatim
+    bool minDurationGiven = false;
 
     // holidays
     std::string country = "PE";

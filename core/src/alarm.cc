@@ -10,7 +10,7 @@ std::vector<AlarmTrigger> triggersOf(const std::vector<Event> &events) {
     for (const Event &event : events) {
         for (const long long fireUtc : alarmTriggersUtc(event)) {
             triggers.push_back(AlarmTrigger{event.id, fireUtc, fireUtc != event.startUtc,
-                                            event.title});
+                                            event.title, event.startUtc});
         }
     }
     return triggers;

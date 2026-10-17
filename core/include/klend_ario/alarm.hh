@@ -22,6 +22,7 @@ struct AlarmTrigger {
     long long fireUtc = 0;
     bool offset = false; // true = the T-offset trigger, false = T=0
     std::string title;
+    long long eventStartUtc = 0; // so a caller can render "T-10m" without a lookup
 };
 
 // Every trigger falling in [fromInclusive, toExclusive), sorted by fire time

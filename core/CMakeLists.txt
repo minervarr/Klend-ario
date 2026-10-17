@@ -22,6 +22,8 @@ add_library(klend_ario_core STATIC
     src/event.cc
     src/timeexpr.cc
     src/query.cc
+    src/conflict.cc
+    src/free.cc
     src/alarm.cc
     src/sync.cc
     src/holidays.cc)
@@ -75,6 +77,16 @@ klend_ario_add_test(query_test
     SOURCES  tests/query_test.cc src/db.cc src/schema.cc src/event.cc src/query.cc
     INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
     LIBS     sqlite3mc arc_util)
+
+# conflict_test / free_test — the two pure interval analyses. They link the
+# module and the model, no storage, no clock.
+klend_ario_add_test(conflict_test
+    SOURCES  tests/conflict_test.cc src/conflict.cc src/event.cc
+    INCLUDES include)
+
+klend_ario_add_test(free_test
+    SOURCES  tests/free_test.cc src/free.cc src/event.cc
+    INCLUDES include)
 
 # sync_test — the pure half of the Syncthing conflict policy. Links sync.cc and
 # arc_fs (for the directory listing) and opens nothing.

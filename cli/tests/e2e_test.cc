@@ -423,6 +423,114 @@ int main() {
     std::remove(queryDb);
 
     // ---------------------------------------------------------------------
+    // Stage 5a: conflicts, free slots, alarm triggers.
+    // ---------------------------------------------------------------------
+    const char *intelDb = "klend_e2e_intel.db";
+    std::remove(intelDb);
+
+    assert(run({"add", "--db", intelDb, "A", "--start", "2026-10-16T09:00:00Z", "--end",
+                "2026-10-16T10:00:00Z"}) == kExitOk);
+    assert(run({"add", "--db", intelDb, "B", "--start", "2026-10-16T09:30:00Z", "--end",
+                "2026-10-16T10:30:00Z"}) == kExitOk);
+    assert(run({"add", "--db", intelDb, "C", "--start", "2026-10-16T10:00:00Z", "--end",
+                "2026-10-16T11:00:00Z"}) == kExitOk);
+    // Hidden sleep overlaps A and B, but it is not part of the default view.
+    assert(run({"add", "--db", intelDb, "Sleep", "--type", "sleep", "--start",
+                "2026-10-16T09:15:00Z", "--end", "2026-10-16T09:45:00Z", "--hidden"}) ==
+           kExitOk);
+    // A reminder row is not a busy block.
+    assert(run({"add", "--db", intelDb, "Reminder", "--type", "alarm", "--start",
+                "2026-10-16T09:00:00Z", "--end", "2026-10-16T10:00:00Z"}) == kExitOk);
+    // Alarm triggers: a visible event with T-10m and a hidden sleep block with T-5m.
+    assert(run({"add", "--db", intelDb, "Timed", "--start", "2026-10-16T14:00:00Z", "--end",
+                "2026-10-16T15:00:00Z", "--alarm-offset", "600"}) == kExitOk);
+    assert(run({"add", "--db", intelDb, "Sleepy", "--type", "sleep", "--start",
+                "2026-10-16T23:00:00Z", "--end", "2026-10-17T07:00:00Z", "--alarm-offset",
+                "300", "--hidden"}) == kExitOk);
+
+#ifndef _WIN32
+    {
+        // Visible conflicts: A/B and B/C. Sleep is hidden; Reminder is ignored.
+        const Capture conflicts = runCaptured(
+            {"conflicts", "--db", intelDb, "--from", "2026-10-16T00:00:00Z", "--to",
+             "2026-10-17T00:00:00Z", "--format", "csv"});
+        assert(conflicts.code == kExitOk);
+        assert(countLines(conflicts.output) == 3); // header + A/B + B/C
+        assert(conflicts.output.find("1,A,2,B,") != std::string::npos);
+        assert(conflicts.output.find("2,B,3,C,") != std::string::npos);
+        assert(conflicts.output.find("Sleep") == std::string::npos);
+        assert(conflicts.output.find("Reminder") == std::string::npos);
+    }
+    {
+        const Capture hidden = runCaptured(
+            {"conflicts", "--db", intelDb, "--from", "2026-10-16T00:00:00Z", "--to",
+             "2026-10-17T00:00:00Z", "--include-hidden", "--format", "csv"});
+        assert(hidden.code == kExitOk);
+        assert(hidden.output.find("Sleep") != std::string::npos);
+    }
+    {
+        const Capture limited = runCaptured(
+            {"conflicts", "--db", intelDb, "--from", "2026-10-16T00:00:00Z", "--to",
+             "2026-10-17T00:00:00Z", "--limit", "1", "--format", "csv"});
+        assert(limited.code == kExitOk);
+        assert(countLines(limited.output) == 2); // header + one pair
+    }
+    {
+        // Busy [09:00, 11:00); free before and after is one hour each.
+        const Capture free = runCaptured(
+            {"free", "--db", intelDb, "--from", "2026-10-16T08:00:00Z", "--to",
+             "2026-10-16T12:00:00Z", "--min-duration", "30m", "--format", "csv"});
+        assert(free.code == kExitOk);
+        assert(countLines(free.output) == 3); // header + two slots
+        assert(free.output.find("2026-10-16T08:00:00Z,2026-10-16T09:00:00Z,3600") !=
+               std::string::npos);
+        assert(free.output.find("2026-10-16T11:00:00Z,2026-10-16T12:00:00Z,3600") !=
+               std::string::npos);
+    }
+    {
+        const Capture none = runCaptured(
+            {"free", "--db", intelDb, "--from", "2026-10-16T08:00:00Z", "--to",
+             "2026-10-16T12:00:00Z", "--min-duration", "90m", "--format", "csv"});
+        assert(none.code == kExitOk);
+        assert(countLines(none.output) == 1); // header only
+    }
+    {
+        // Hidden sleep blocks still alarm. Two triggers: T-5m and T=0.
+        const Capture alarms = runCaptured(
+            {"alarms", "--db", intelDb, "--from", "2026-10-16T22:00:00Z", "--to",
+             "2026-10-17T00:00:00Z", "--type", "sleep", "--format", "csv"});
+        assert(alarms.code == kExitOk);
+        assert(countLines(alarms.output) == 3); // header + T-5m + T=0
+        assert(alarms.output.find("Sleepy") != std::string::npos);
+        assert(alarms.output.find("T-5m") != std::string::npos);
+        assert(alarms.output.find("T=0") != std::string::npos);
+    }
+    {
+        const Capture alarms = runCaptured(
+            {"alarms", "--db", intelDb, "--from", "2026-10-16T13:00:00Z", "--to",
+             "2026-10-16T15:00:00Z", "--type", "event", "--limit", "1", "--format", "csv"});
+        assert(alarms.code == kExitOk);
+        assert(countLines(alarms.output) == 2); // header + T-10m
+        assert(alarms.output.find("Timed") != std::string::npos);
+        assert(alarms.output.find("T-10m") != std::string::npos);
+    }
+#endif
+
+    // Defaults and bad input.
+    assert(run({"conflicts", "--db", intelDb}) == kExitOk);
+    assert(run({"free", "--db", intelDb}) == kExitOk);
+    assert(run({"alarms", "--db", intelDb}) == kExitOk);
+    assert(run({"free", "--db", intelDb, "--min-duration", "0"}) == kExitUsage);
+    assert(run({"free", "--db", intelDb, "--min-duration", "banana"}) == kExitUsage);
+    assert(run({"conflicts", "--db", intelDb, "--sort", "start"}) == kExitUsage);
+    assert(run({"conflicts", "--db", intelDb, "--offset", "1"}) == kExitUsage);
+    assert(run({"alarms", "--db", intelDb, "--search", "x"}) == kExitUsage);
+    assert(run({"conflicts", "--db", intelDb, "--type", "banana"}) == kExitUsage);
+    assert(run({"list", "--db", intelDb, "--min-duration", "30m"}) == kExitUsage);
+
+    std::remove(intelDb);
+
+    // ---------------------------------------------------------------------
     // An encrypted database, through the CLI, via --key-file.
     // ---------------------------------------------------------------------
     const char *cryptoDb = "klend_e2e_crypto.db";

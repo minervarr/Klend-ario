@@ -136,6 +136,10 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   bound, `ORDER BY` is a whitelist, and the half-open overlap rule lives in one
   place (`listEvents` delegates). `hidden` is a weekly-view flag, not deletion:
   data verbs see hidden rows, view verbs filter them by default.
+- **Intelligence is pure where it can be.** `findConflicts` and `freeSlots` are
+  interval functions over a vector of events, tested without a database.
+  `EventType::Alarm` rows are reminders, not busy blocks, and a hidden row still
+  alarms — hiding is a display choice.
 - **A partial edit changes only supplied flags.** Carry a `*Given` flag in
   `Args` for every editable field; a default value cannot mean "leave alone".
 - Every comment that explains a *surprising* choice is worth its weight. Every

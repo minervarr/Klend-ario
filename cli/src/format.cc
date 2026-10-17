@@ -283,6 +283,47 @@ std::string holidayRow(const holidays::Holiday &holiday, OutputFormat format) {
            (holiday.nonWorking ? "true" : "false") + "\t" + tsvField(observed) + "\n";
 }
 
+// Exact, compact, and unambiguous: 5400 -> "1h30m", 90061 -> "1d1h1m1s".
+// Seconds are included rather than rounded away, which matters for alarm
+// offsets and for a free slot that is 29m59s rather than 30m.
+std::string humanDuration(long long seconds) {
+    if (seconds <= 0) {
+        return "0s";
+    }
+    std::string out;
+    auto append = [&](long long value, char unit) {
+        if (value == 0) {
+            return;
+        }
+        out += std::to_string(value);
+        out.push_back(unit);
+    };
+
+    const long long days = seconds / 86400;
+    seconds %= 86400;
+    const long long hours = seconds / 3600;
+    seconds %= 3600;
+    const long long minutes = seconds / 60;
+    const long long secs = seconds % 60;
+
+    append(days, 'd');
+    append(hours, 'h');
+    append(minutes, 'm');
+    append(secs, 's');
+    return out.empty() ? "0s" : out;
+}
+
+std::string alarmKind(const AlarmTrigger &trigger) {
+    const long long delta = trigger.eventStartUtc - trigger.fireUtc;
+    if (delta == 0) {
+        return "T=0";
+    }
+    if (delta > 0) {
+        return "T-" + humanDuration(delta);
+    }
+    return "T+" + humanDuration(-delta);
+}
+
 } // namespace
 
 bool parseOutputFormat(std::string_view name, OutputFormat &out) {
@@ -469,6 +510,205 @@ std::string formatHolidays(const std::vector<holidays::Holiday> &holidays, Outpu
     std::string out = options.header ? holidayHeaderRow(format) : "";
     for (const holidays::Holiday &holiday : holidays) {
         out += holidayRow(holiday, format);
+    }
+    return out;
+}
+
+std::string formatConflicts(const std::vector<Conflict> &conflicts, OutputFormat format,
+                            const FormatOptions &options) {
+    if (format == OutputFormat::Text) {
+        std::string out;
+        for (const Conflict &conflict : conflicts) {
+            out += std::to_string(conflict.firstId) + " <-> " +
+                   std::to_string(conflict.secondId) + "  " +
+                   formatIso8601(conflict.startUtc) + "  " + formatIso8601(conflict.endUtc) +
+                   "  " + conflict.firstTitle + " / " + conflict.secondTitle + "\n";
+        }
+        return out;
+    }
+    if (format == OutputFormat::Table) {
+        static const Cells headers = {"A", "B", "START", "END", "A TITLE", "B TITLE"};
+        static const std::vector<bool> alignment = {true, true, false, false, false, false};
+        std::vector<TableRow> rows;
+        rows.reserve(conflicts.size());
+        for (const Conflict &conflict : conflicts) {
+            rows.push_back({{std::to_string(conflict.firstId), std::to_string(conflict.secondId),
+                             formatIso8601(conflict.startUtc), formatIso8601(conflict.endUtc),
+                             conflict.firstTitle, conflict.secondTitle},
+                            alignment});
+        }
+        const std::string full = renderTable(headers, rows, alignment);
+        if (options.header) {
+            return full;
+        }
+        const size_t firstNewline = full.find('\n');
+        return firstNewline == std::string::npos ? std::string() : full.substr(firstNewline + 1);
+    }
+    if (format == OutputFormat::Json) {
+        std::string out = "[";
+        for (size_t i = 0; i < conflicts.size(); ++i) {
+            const Conflict &conflict = conflicts[i];
+            if (i != 0) {
+                out += ",";
+            }
+            out += "{\"first_id\":" + std::to_string(conflict.firstId) + ",\"first_title\":\"" +
+                   jsonEscape(conflict.firstTitle) + "\",\"second_id\":" +
+                   std::to_string(conflict.secondId) + ",\"second_title\":\"" +
+                   jsonEscape(conflict.secondTitle) + "\",\"start\":\"" +
+                   formatIso8601(conflict.startUtc) + "\",\"end\":\"" +
+                   formatIso8601(conflict.endUtc) + "\"}";
+        }
+        out += "]\n";
+        return out;
+    }
+
+    const std::string separator = format == OutputFormat::Csv ? "," : "\t";
+    std::string out = options.header
+                          ? "first_id" + separator + "first_title" + separator + "second_id" +
+                                separator + "second_title" + separator + "start" + separator +
+                                "end\n"
+                          : "";
+    for (const Conflict &conflict : conflicts) {
+        if (format == OutputFormat::Csv) {
+            out += csvField(std::to_string(conflict.firstId)) + "," +
+                   csvField(conflict.firstTitle) + "," +
+                   csvField(std::to_string(conflict.secondId)) + "," +
+                   csvField(conflict.secondTitle) + "," +
+                   csvField(formatIso8601(conflict.startUtc)) + "," +
+                   csvField(formatIso8601(conflict.endUtc)) + "\n";
+        } else {
+            out += tsvField(std::to_string(conflict.firstId)) + "\t" +
+                   tsvField(conflict.firstTitle) + "\t" +
+                   tsvField(std::to_string(conflict.secondId)) + "\t" +
+                   tsvField(conflict.secondTitle) + "\t" +
+                   tsvField(formatIso8601(conflict.startUtc)) + "\t" +
+                   tsvField(formatIso8601(conflict.endUtc)) + "\n";
+        }
+    }
+    return out;
+}
+
+std::string formatFreeSlots(const std::vector<FreeSlot> &slots, OutputFormat format,
+                            const FormatOptions &options) {
+    if (format == OutputFormat::Text) {
+        std::string out;
+        for (const FreeSlot &slot : slots) {
+            out += formatIso8601(slot.startUtc) + "  " + formatIso8601(slot.endUtc) + "  " +
+                   humanDuration(slot.endUtc - slot.startUtc) + "\n";
+        }
+        return out;
+    }
+    if (format == OutputFormat::Table) {
+        static const Cells headers = {"START", "END", "DURATION"};
+        static const std::vector<bool> alignment = {false, false, false};
+        std::vector<TableRow> rows;
+        rows.reserve(slots.size());
+        for (const FreeSlot &slot : slots) {
+            rows.push_back({{formatIso8601(slot.startUtc), formatIso8601(slot.endUtc),
+                             humanDuration(slot.endUtc - slot.startUtc)},
+                            alignment});
+        }
+        const std::string full = renderTable(headers, rows, alignment);
+        if (options.header) {
+            return full;
+        }
+        const size_t firstNewline = full.find('\n');
+        return firstNewline == std::string::npos ? std::string() : full.substr(firstNewline + 1);
+    }
+    if (format == OutputFormat::Json) {
+        std::string out = "[";
+        for (size_t i = 0; i < slots.size(); ++i) {
+            if (i != 0) {
+                out += ",";
+            }
+            out += "{\"start\":\"" + formatIso8601(slots[i].startUtc) + "\",\"end\":\"" +
+                   formatIso8601(slots[i].endUtc) + "\",\"duration_seconds\":" +
+                   std::to_string(slots[i].endUtc - slots[i].startUtc) + "}";
+        }
+        out += "]\n";
+        return out;
+    }
+
+    const std::string separator = format == OutputFormat::Csv ? "," : "\t";
+    std::string out = options.header
+                          ? "start" + separator + "end" + separator + "duration_seconds\n"
+                          : "";
+    for (const FreeSlot &slot : slots) {
+        if (format == OutputFormat::Csv) {
+            out += csvField(formatIso8601(slot.startUtc)) + "," +
+                   csvField(formatIso8601(slot.endUtc)) + "," +
+                   std::to_string(slot.endUtc - slot.startUtc) + "\n";
+        } else {
+            out += tsvField(formatIso8601(slot.startUtc)) + "\t" +
+                   tsvField(formatIso8601(slot.endUtc)) + "\t" +
+                   std::to_string(slot.endUtc - slot.startUtc) + "\n";
+        }
+    }
+    return out;
+}
+
+std::string formatAlarms(const std::vector<AlarmTrigger> &triggers, OutputFormat format,
+                         const FormatOptions &options) {
+    if (format == OutputFormat::Text) {
+        std::string out;
+        for (const AlarmTrigger &trigger : triggers) {
+            out += formatIso8601(trigger.fireUtc) + "  " + std::to_string(trigger.eventId) +
+                   "  " + trigger.title + "  " + alarmKind(trigger) + "\n";
+        }
+        return out;
+    }
+    if (format == OutputFormat::Table) {
+        static const Cells headers = {"FIRE", "EVENT", "TITLE", "KIND"};
+        static const std::vector<bool> alignment = {false, true, false, false};
+        std::vector<TableRow> rows;
+        rows.reserve(triggers.size());
+        for (const AlarmTrigger &trigger : triggers) {
+            rows.push_back({{formatIso8601(trigger.fireUtc), std::to_string(trigger.eventId),
+                             trigger.title, alarmKind(trigger)},
+                            alignment});
+        }
+        const std::string full = renderTable(headers, rows, alignment);
+        if (options.header) {
+            return full;
+        }
+        const size_t firstNewline = full.find('\n');
+        return firstNewline == std::string::npos ? std::string() : full.substr(firstNewline + 1);
+    }
+    if (format == OutputFormat::Json) {
+        std::string out = "[";
+        for (size_t i = 0; i < triggers.size(); ++i) {
+            const AlarmTrigger &trigger = triggers[i];
+            if (i != 0) {
+                out += ",";
+            }
+            const long long offsetSeconds = trigger.eventStartUtc - trigger.fireUtc;
+            out += "{\"fire\":\"" + formatIso8601(trigger.fireUtc) + "\",\"event_id\":" +
+                   std::to_string(trigger.eventId) + ",\"title\":\"" +
+                   jsonEscape(trigger.title) + "\",\"kind\":\"" + alarmKind(trigger) +
+                   "\",\"offset_seconds\":" + std::to_string(offsetSeconds) + "}";
+        }
+        out += "]\n";
+        return out;
+    }
+
+    const std::string separator = format == OutputFormat::Csv ? "," : "\t";
+    std::string out = options.header
+                          ? "fire" + separator + "event_id" + separator + "title" + separator +
+                                "kind" + separator + "offset_seconds\n"
+                          : "";
+    for (const AlarmTrigger &trigger : triggers) {
+        const long long offsetSeconds = trigger.eventStartUtc - trigger.fireUtc;
+        if (format == OutputFormat::Csv) {
+            out += csvField(formatIso8601(trigger.fireUtc)) + "," +
+                   csvField(std::to_string(trigger.eventId)) + "," +
+                   csvField(trigger.title) + "," + csvField(alarmKind(trigger)) + "," +
+                   std::to_string(offsetSeconds) + "\n";
+        } else {
+            out += tsvField(formatIso8601(trigger.fireUtc)) + "\t" +
+                   tsvField(std::to_string(trigger.eventId)) + "\t" +
+                   tsvField(trigger.title) + "\t" + tsvField(alarmKind(trigger)) + "\t" +
+                   std::to_string(offsetSeconds) + "\n";
+        }
     }
     return out;
 }

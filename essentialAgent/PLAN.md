@@ -72,12 +72,17 @@ work is staged so each layer is useful and tested on its own; logic stays in
       `--min/max-importance`, `--min/max-urgency`; visibility
       `--visible`/`--hidden-only`/`--include-hidden`; `--sort`, `--limit`,
       `--offset`. Literal substring search; no FTS or migration.
-- [ ] **Stage 5 — intelligence.** `conflicts`, `free`, `alarms`, `stats`,
-      `doctor`.
+- [ ] **Stage 5 — intelligence.**
+  - [x] **5a — conflicts, free, alarms.** Pure `conflict`/`free` interval
+        analyses plus an `alarms` verb over the existing trigger core.
+        `EventType::Alarm` rows are reminders and do not occupy time; hidden
+        rows still alarm.
+  - [ ] **5b — stats, doctor.** Summary counts and a read-only health report
+        (`PRAGMA integrity_check`, schema/marker checks, Syncthing copies).
 - [ ] **Stage 6 — portability.** `export`/`import` (csv/jsonl/ics export),
       `completion`.
 
-Stages 5–6 are planned, not built. GUI Phase 4 resumes after these unless the
+Stages 5b–6 are planned, not built. GUI Phase 4 resumes after these unless the
 order changes again — see the status log.
 
 ---
@@ -166,7 +171,7 @@ ctest --test-dir build --output-on-failure      # all pass
 - [x] `core/tests/holidays_test.cc` asserts a known 2026 Peru calendar,
       case/trimmed lookup, the *día no laborable* negative, and the
       unknown-country error.
-- [x] The child's seven suites run through the parent's CTest (21 suites
+- [x] The child's seven suites run through the parent's CTest (23 suites
       total), so a parent `ctest` also protects the library.
 - [ ] Android NDK build of the child — open; no NDK/SDK in this environment.
 
@@ -175,6 +180,17 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **CLI hardening, Stage 5a — conflicts/free/alarms (2026-10-17).** Added pure
+  `core/conflict.hh` (pairwise overlaps; `EventType::Alarm` rows are reminders,
+  not blocks; touching/zero-length never conflict) and `core/free.hh` (merged
+  busy intervals → gaps, range-clamped, minimum duration). `AlarmTrigger` now
+  carries `eventStartUtc`, so the CLI renders `T-10m` / `T=0` directly. New
+  verbs `conflicts`, `free`, `alarms`; hidden rows are filtered for conflicts
+  and free time, but **included by default for alarms** because hiding is a
+  display choice, not a schedule change. New `conflict_test`/`free_test` and
+  stdout-capturing e2e coverage bring the parent to 23 suites. No submodule
+  change.
 
 - **CLI hardening, Stage 4 — query power (2026-10-17).** Added
   `core/query.hh` (`EventQuery`, `EventSort`, `Visibility`) and

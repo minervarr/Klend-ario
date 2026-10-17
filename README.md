@@ -51,6 +51,9 @@ ctest --test-dir build --output-on-failure
 ./build/cli/klend_ario_cli next
 ./build/cli/klend_ario_cli agenda --days 3
 ./build/cli/klend_ario_cli search "standup"
+./build/cli/klend_ario_cli conflicts
+./build/cli/klend_ario_cli free --min-duration 45m
+./build/cli/klend_ario_cli alarms --limit 5
 ./build/cli/klend_ario_cli list --from today --to today+7d --min-importance 70
 ./build/cli/klend_ario_cli edit 1 --shift 1h
 ./build/cli/klend_ario_cli holidays --year 2026 --format csv
@@ -67,6 +70,11 @@ found and edited. Override with `--visible`, `--hidden-only`, or
 `--include-hidden`. Search is a literal, case-insensitive substring of title and
 notes — `%` and `_` are ordinary characters, and `next` includes an event that
 is already underway.
+
+`conflicts` reports pairwise overlaps (alarm rows are reminders, not blocks);
+`free` merges busy time and lists the gaps; `alarms` lists T-offset and T=0
+triggers. Alarms include hidden rows by default — hiding a sleep block in the
+weekly view does not cancel its wake-up.
 
 ## Layout
 

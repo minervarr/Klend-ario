@@ -32,6 +32,9 @@ void testVerbs() {
     assert(parse({"next"}).verb == Verb::Next);
     assert(parse({"agenda"}).verb == Verb::Agenda);
     assert(parse({"search"}).verb == Verb::Search);
+    assert(parse({"conflicts"}).verb == Verb::Conflicts);
+    assert(parse({"free"}).verb == Verb::Free);
+    assert(parse({"alarms"}).verb == Verb::Alarms);
     assert(parse({"show"}).verb == Verb::Show);
     assert(parse({"rm"}).verb == Verb::Remove);
     assert(parse({"remove"}).verb == Verb::Remove);
@@ -167,6 +170,38 @@ void testShiftAndFormat() {
     assert(format.noHeader);
     // The name is validated by the command; parsing only carries it.
     assert(parse({"list", "--format", "xml"}).error.empty());
+}
+
+void testIntelligenceFlags() {
+    const Args conflicts = parse({"conflicts", "--from", "today", "--to", "today+7d", "--type",
+                                  "sleep", "--limit", "5", "--visible"});
+    assert(conflicts.error.empty());
+    assert(conflicts.verb == Verb::Conflicts);
+    assert(conflicts.fromGiven && conflicts.from == "today");
+    assert(conflicts.toGiven && conflicts.to == "today+7d");
+    assert(conflicts.typeGiven && conflicts.type == "sleep");
+    assert(conflicts.limitGiven && conflicts.limit == 5);
+    assert(conflicts.visibleOnly);
+
+    const Args free = parse({"free", "--min-duration", "45m", "--limit", "3"});
+    assert(free.error.empty());
+    assert(free.verb == Verb::Free);
+    assert(free.minDurationGiven && free.minDuration == "45m");
+    assert(free.limitGiven && free.limit == 3);
+
+    const Args alarms = parse({"alarms", "--include-hidden", "--limit", "0"});
+    assert(alarms.error.empty());
+    assert(alarms.verb == Verb::Alarms);
+    assert(alarms.includeHidden);
+    assert(alarms.limitGiven && alarms.limit == 0);
+
+    // The intelligence verbs take their own flags, not the query-only ones.
+    assert(!parse({"free", "--min-duration"}).error.empty());
+    assert(!parse({"list", "--min-duration", "30m"}).error.empty());
+    assert(!parse({"conflicts", "--sort", "start"}).error.empty());
+    assert(!parse({"conflicts", "--search", "x"}).error.empty());
+    assert(!parse({"conflicts", "--offset", "1"}).error.empty());
+    assert(!parse({"show", "5", "--type", "sleep"}).error.empty());
 }
 
 void testHelpTopics() {
@@ -326,6 +361,7 @@ int main() {
     testQueryFlags();
     testSearchPositional();
     testQueryOnlyFlagsRejectedOnMutation();
+    testIntelligenceFlags();
     testHolidaysVerb();
     testUsageErrors();
     std::printf("args_test: all assertions passed\n");

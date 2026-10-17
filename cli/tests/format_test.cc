@@ -23,6 +23,12 @@ Event makeEvent() {
     return e;
 }
 
+long long instant(const char *text) {
+    const auto value = parseIso8601(text);
+    assert(value.has_value());
+    return *value;
+}
+
 void testExpressionParser() {
     OutputFormat format = OutputFormat::Text;
     assert(parseOutputFormat("json", format) && format == OutputFormat::Json);
@@ -134,6 +140,50 @@ void testHolidays() {
     assert(headless.find("DATE") == std::string::npos);
 }
 
+void testIntelligenceFormats() {
+    const Conflict conflict{1, "Standup", 4, "Nested", instant("2026-10-16T09:30:00Z"),
+                            instant("2026-10-16T09:45:00Z")};
+    assert(formatConflicts({conflict}, OutputFormat::Text, {}) ==
+           "1 <-> 4  2026-10-16T09:30:00Z  2026-10-16T09:45:00Z  Standup / Nested\n");
+    assert(formatConflicts({conflict}, OutputFormat::Json, {}) ==
+           "[{\"first_id\":1,\"first_title\":\"Standup\",\"second_id\":4,"
+           "\"second_title\":\"Nested\",\"start\":\"2026-10-16T09:30:00Z\","
+           "\"end\":\"2026-10-16T09:45:00Z\"}]\n");
+    const std::string conflictCsv = formatConflicts({conflict}, OutputFormat::Csv, {});
+    assert(conflictCsv.rfind("first_id,first_title,second_id,second_title,start,end\n", 0) == 0);
+    assert(conflictCsv.find("1,Standup,4,Nested,2026-10-16T09:30:00Z,"
+                            "2026-10-16T09:45:00Z\n") != std::string::npos);
+
+    const FreeSlot slot{instant("2026-10-16T09:00:00Z"), instant("2026-10-16T09:30:00Z")};
+    assert(formatFreeSlots({slot}, OutputFormat::Text, {}) ==
+           "2026-10-16T09:00:00Z  2026-10-16T09:30:00Z  30m\n");
+    assert(formatFreeSlots({slot}, OutputFormat::Json, {}) ==
+           "[{\"start\":\"2026-10-16T09:00:00Z\",\"end\":\"2026-10-16T09:30:00Z\","
+           "\"duration_seconds\":1800}]\n");
+    const std::string freeCsv = formatFreeSlots({slot}, OutputFormat::Csv, {});
+    assert(freeCsv.rfind("start,end,duration_seconds\n", 0) == 0);
+    assert(freeCsv.find("2026-10-16T09:00:00Z,2026-10-16T09:30:00Z,1800\n") !=
+           std::string::npos);
+
+    const AlarmTrigger offset{1, instant("2026-10-16T08:50:00Z"), true, "Standup",
+                              instant("2026-10-16T09:00:00Z")};
+    const AlarmTrigger start{1, instant("2026-10-16T09:00:00Z"), false, "Standup",
+                             instant("2026-10-16T09:00:00Z")};
+    const AlarmTrigger after{1, instant("2026-10-16T09:10:00Z"), true, "Standup",
+                             instant("2026-10-16T09:00:00Z")};
+    assert(formatAlarms({offset, start, after}, OutputFormat::Text, {}) ==
+           "2026-10-16T08:50:00Z  1  Standup  T-10m\n"
+           "2026-10-16T09:00:00Z  1  Standup  T=0\n"
+           "2026-10-16T09:10:00Z  1  Standup  T+10m\n");
+    assert(formatAlarms({offset}, OutputFormat::Json, {}) ==
+           "[{\"fire\":\"2026-10-16T08:50:00Z\",\"event_id\":1,\"title\":\"Standup\","
+           "\"kind\":\"T-10m\",\"offset_seconds\":600}]\n");
+    const std::string alarmCsv = formatAlarms({offset}, OutputFormat::Csv, {});
+    assert(alarmCsv.rfind("fire,event_id,title,kind,offset_seconds\n", 0) == 0);
+    assert(alarmCsv.find("2026-10-16T08:50:00Z,1,Standup,T-10m,600\n") !=
+           std::string::npos);
+}
+
 } // namespace
 
 int main() {
@@ -144,6 +194,7 @@ int main() {
     testTsvEscapes();
     testTable();
     testHolidays();
+    testIntelligenceFormats();
     std::printf("format_test: all assertions passed\n");
     return 0;
 }

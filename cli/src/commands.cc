@@ -17,8 +17,11 @@
 
 #include "arc/fs/paths.hh"
 #include "format.hh"
+#include "klend_ario/alarm.hh"
+#include "klend_ario/conflict.hh"
 #include "klend_ario/db.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/free.hh"
 #include "klend_ario/holidays.hh"
 #include "klend_ario/sync.hh"
 #include "klend_ario/timeexpr.hh"
@@ -405,7 +408,7 @@ std::string trimCopy(std::string_view text) {
 // A hidden row is a real row: list/search are data access and see everything.
 // The view verbs mirror the weekly view, which hides sleep blocks by default.
 Visibility defaultVisibilityFor(Verb verb) {
-    if (verb == Verb::List || verb == Verb::Search) {
+    if (verb == Verb::List || verb == Verb::Search || verb == Verb::Alarms) {
         return Visibility::Any;
     }
     return Visibility::Visible;
@@ -444,13 +447,21 @@ int resolveSort(const Args &args, Verb verb, EventSort &out) {
     return kExitOk;
 }
 
+int applyTypeFilter(const Args &args, EventQuery &query) {
+    if (!args.typeGiven) {
+        return kExitOk;
+    }
+    EventType type = EventType::Event;
+    if (!klend_ario::eventTypeFromName(args.type, type)) {
+        return usageError("--type must be event|sleep|wake|alarm");
+    }
+    query.type = type;
+    return kExitOk;
+}
+
 int applyQueryFilters(const Args &args, EventQuery &query) {
-    if (args.typeGiven) {
-        EventType type = EventType::Event;
-        if (!klend_ario::eventTypeFromName(args.type, type)) {
-            return usageError("--type must be event|sleep|wake|alarm");
-        }
-        query.type = type;
+    if (const int rc = applyTypeFilter(args, query); rc != kExitOk) {
+        return rc;
     }
 
     if (args.minImportanceGiven) {
@@ -630,6 +641,163 @@ int commandQuery(const Args &args, Verb verb, OutputFormat format, const FormatO
     return kExitOk;
 }
 
+int resolveIntelligenceRange(const Args &args, Verb verb, long long nowUtc, long long &from,
+                             long long &to) {
+    const long long dayStart = startOfDayUtc(nowUtc);
+    switch (verb) {
+    case Verb::Conflicts:
+        from = dayStart;
+        break;
+    case Verb::Free:
+    case Verb::Alarms:
+        from = nowUtc;
+        break;
+    default:
+        return usageError("internal error: not an intelligence verb");
+    }
+
+    if (args.fromGiven) {
+        const auto parsed = parseInstant(args.from, nowUtc);
+        if (!parsed) {
+            return usageError("--from is not a UTC instant (e.g. today, 2026-10-16, now)");
+        }
+        from = *parsed;
+    }
+    if (!addChecked(from, kWeekSeconds, to)) {
+        return usageError("--from is out of range");
+    }
+    if (args.toGiven) {
+        const auto parsed = parseInstant(args.to, nowUtc);
+        if (!parsed) {
+            return usageError("--to is not a UTC instant (e.g. tomorrow, 2026-10-23)");
+        }
+        to = *parsed;
+    }
+    if (to < from) {
+        return usageError("--to is before --from");
+    }
+    return kExitOk;
+}
+
+int commandConflicts(const Args &args, OutputFormat format, const FormatOptions &options) {
+    const long long now = klend_ario::utcNowSeconds();
+    long long from = 0;
+    long long to = 0;
+    if (const int rc = resolveIntelligenceRange(args, Verb::Conflicts, now, from, to);
+        rc != kExitOk) {
+        return rc;
+    }
+
+    EventQuery query;
+    query.fromUtc = from;
+    query.toUtc = to;
+    query.sort = EventSort::Start;
+    query.limit = -1;
+    if (const int rc = resolveVisibility(args, Verb::Conflicts, query.visibility);
+        rc != kExitOk) {
+        return rc;
+    }
+    if (const int rc = applyTypeFilter(args, query); rc != kExitOk) {
+        return rc;
+    }
+
+    Db db;
+    if (const int rc = openDb(args, db); rc != kExitOk) {
+        return rc;
+    }
+    auto events = db.queryEvents(query);
+    if (!events) {
+        return reportError(events.error());
+    }
+    std::vector<klend_ario::Conflict> conflicts = klend_ario::findConflicts(events.value());
+    if (args.limitGiven && conflicts.size() > static_cast<size_t>(args.limit)) {
+        conflicts.resize(static_cast<size_t>(args.limit));
+    }
+    std::fputs(formatConflicts(conflicts, format, options).c_str(), stdout);
+    return kExitOk;
+}
+
+int commandFree(const Args &args, OutputFormat format, const FormatOptions &options) {
+    const auto minDuration = parseDurationExpr(args.minDuration);
+    if (!minDuration || *minDuration <= 0) {
+        return usageError("--min-duration must be a positive duration (e.g. 30m)");
+    }
+
+    const long long now = klend_ario::utcNowSeconds();
+    long long from = 0;
+    long long to = 0;
+    if (const int rc = resolveIntelligenceRange(args, Verb::Free, now, from, to); rc != kExitOk) {
+        return rc;
+    }
+
+    EventQuery query;
+    query.fromUtc = from;
+    query.toUtc = to;
+    query.sort = EventSort::Start;
+    query.limit = -1;
+    if (const int rc = resolveVisibility(args, Verb::Free, query.visibility); rc != kExitOk) {
+        return rc;
+    }
+    if (const int rc = applyTypeFilter(args, query); rc != kExitOk) {
+        return rc;
+    }
+
+    Db db;
+    if (const int rc = openDb(args, db); rc != kExitOk) {
+        return rc;
+    }
+    auto events = db.queryEvents(query);
+    if (!events) {
+        return reportError(events.error());
+    }
+    std::vector<klend_ario::FreeSlot> slots =
+        klend_ario::freeSlots(events.value(), from, to, *minDuration);
+    if (args.limitGiven && slots.size() > static_cast<size_t>(args.limit)) {
+        slots.resize(static_cast<size_t>(args.limit));
+    }
+    std::fputs(formatFreeSlots(slots, format, options).c_str(), stdout);
+    return kExitOk;
+}
+
+int commandAlarms(const Args &args, OutputFormat format, const FormatOptions &options) {
+    const long long now = klend_ario::utcNowSeconds();
+    long long from = 0;
+    long long to = 0;
+    if (const int rc = resolveIntelligenceRange(args, Verb::Alarms, now, from, to);
+        rc != kExitOk) {
+        return rc;
+    }
+
+    // Deliberately unbounded: an alarm offset can place a trigger before the
+    // event starts (or, for a negative offset, after it), so filtering the
+    // events by the trigger window would miss rows. The personal-scale scan is
+    // the correct first implementation; a benchmark can add an index later.
+    EventQuery query;
+    query.limit = -1;
+    if (const int rc = resolveVisibility(args, Verb::Alarms, query.visibility); rc != kExitOk) {
+        return rc;
+    }
+    if (const int rc = applyTypeFilter(args, query); rc != kExitOk) {
+        return rc;
+    }
+
+    Db db;
+    if (const int rc = openDb(args, db); rc != kExitOk) {
+        return rc;
+    }
+    auto events = db.queryEvents(query);
+    if (!events) {
+        return reportError(events.error());
+    }
+    std::vector<klend_ario::AlarmTrigger> triggers =
+        klend_ario::alarmsIn(events.value(), from, to);
+    if (args.limitGiven && triggers.size() > static_cast<size_t>(args.limit)) {
+        triggers.resize(static_cast<size_t>(args.limit));
+    }
+    std::fputs(formatAlarms(triggers, format, options).c_str(), stdout);
+    return kExitOk;
+}
+
 int commandShow(const Args &args, OutputFormat format, const FormatOptions &options) {
     if (args.id <= 0) {
         return usageError("show needs an event id");
@@ -732,6 +900,12 @@ int runCommand(const Args &args) {
         return commandQuery(args, Verb::Agenda, format, options);
     case Verb::Search:
         return commandQuery(args, Verb::Search, format, options);
+    case Verb::Conflicts:
+        return commandConflicts(args, format, options);
+    case Verb::Free:
+        return commandFree(args, format, options);
+    case Verb::Alarms:
+        return commandAlarms(args, format, options);
     case Verb::Show:
         return commandShow(args, format, options);
     case Verb::Remove:

@@ -100,6 +100,9 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI search | Literal ASCII case-insensitive substring of **title + notes**. `%`/`_` are ordinary characters; a multi-word query is a phrase. No FTS until a benchmark asks for it |
 | CLI hidden | `hidden` is a **weekly-view** flag, not deletion. `list`/`search` see hidden rows; `today`/`week`/`next`/`agenda` default to visible only. `--visible`/`--hidden-only`/`--include-hidden` override |
 | CLI next | The first event with `end_utc > now`, so an event already underway counts. Visible only by default; limit 1, widened by `--limit` |
+| CLI conflicts | Pairwise half-open overlaps. `EventType::Alarm` is a reminder, not a block, so it is ignored; touching endpoints and zero-length events never conflict. A triple overlap is three pairs. Hidden rows are filtered by the caller |
+| CLI free | Merge busy intervals, clamp to the query range, emit gaps ≥ `--min-duration` (default 30m). Alarm rows never block; hidden rows only block with `--include-hidden` |
+| CLI alarms | Upcoming T-offset + T=0 triggers, sorted by fire time. **Hidden rows are included by default**: `hidden` is a weekly-view choice, not a schedule cancellation. Events are scanned unbounded because an offset can move a trigger outside the event's own range |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
@@ -191,6 +194,16 @@ These are truths this workspace already paid for. Do not relearn them.
   includes an event whose `end_utc > now`, so `next` does too. Defining it as
   `start_utc > now` would make it the only query that skips the meeting you are
   currently in.
+- **A reminder is not a block.** `EventType::Alarm` is a row type for a trigger,
+  not the alarm app and not occupied time. `conflicts` and `free` ignore those
+  rows; counting them would make a reminder “double-book” its own target and
+  remove free time that is actually free. The separate `alarm/` frontend still
+  consumes every trigger through core.
+- **Hidden is display, not cancellation.** The weekly view hides sleep blocks
+  so the productivity view stays clean, but the sleep/wake alarms must still
+  fire. That is why `conflicts`/`free` default to visible rows while `alarms`
+  defaults to all rows; `--visible`/`--include-hidden` makes either choice
+  explicit.
 - **Migrations are additive and refused in the wrong direction.** The schema
   version lives in `meta.schema_version` and is checked on every open. Steps run
   upward only, in order. A database written by a *newer* build is **refused**
@@ -315,6 +328,9 @@ enough to keep, because both were decided against an obvious alternative.
   installed-backend shape as `arc_fs`'s media index.
 - **Two triggers per event** (`merged.md` §6): T-offset first, then T=0, both
   from `event.hh`'s `alarmTriggersUtc`.
+- **Hidden rows still alarm.** `hidden` hides a block in the weekly view; it
+  does not cancel a trigger. The CLI `alarms` verb therefore defaults to all
+  rows, while `conflicts`/`free` default to visible ones.
 - **The poll window is (previous poll, now],** and the FIRST poll opens
   `now - horizon` back (default 60s) so a restart does not replay yesterday's
   alarms while a late start still catches a recent one. `engine_test` pins both

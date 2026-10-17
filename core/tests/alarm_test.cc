@@ -29,6 +29,9 @@ static void testTriggersAreOffsetThenStart() {
     assert(all[0].fireUtc == 400 && all[0].offset);   // T-offset first
     assert(all[1].fireUtc == 1000 && !all[1].offset); // then T=0
     assert(all[0].eventId == 1 && all[0].title == "e");
+    // The trigger carries the event start, so a formatter can say "T-10m"
+    // without looking the event up again.
+    assert(all[0].eventStartUtc == 1000 && all[1].eventStartUtc == 1000);
 }
 
 static void testNoOffsetMeansOneTrigger() {

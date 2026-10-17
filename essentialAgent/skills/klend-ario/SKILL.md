@@ -78,6 +78,9 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
   `Db::queryEvents`; never filter a `listEvents` result in a frontend and never
   interpolate user text into SQL. `hidden` is a view flag: `list`/`search` see
   hidden rows, view verbs filter them.
+- **Interval intelligence stays pure.** `findConflicts`/`freeSlots` take a
+  vector of events, not a database. Alarm rows are reminders, not blocks; a
+  hidden row still fires its alarm.
 - **No speculative storage rewrite.** SQLite stays until a benchmark proves a
   JSON store faster on the real operations; encryption is not a blocker.
 - **Captured ≠ built.** Notes, the 10 h sleep scheduler, G-SHOCK sync, and NTP

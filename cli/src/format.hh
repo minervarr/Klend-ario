@@ -4,7 +4,10 @@
 #include <string_view>
 #include <vector>
 
+#include "klend_ario/alarm.hh"
+#include "klend_ario/conflict.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/free.hh"
 #include "klend_ario/holidays.hh"
 
 // Output rendering, as pure functions.
@@ -44,6 +47,15 @@ std::string formatEvents(const std::vector<Event> &events, OutputFormat format,
 
 std::string formatHolidays(const std::vector<holidays::Holiday> &holidays, OutputFormat format,
                            const FormatOptions &options);
+
+std::string formatConflicts(const std::vector<Conflict> &conflicts, OutputFormat format,
+                            const FormatOptions &options);
+
+std::string formatFreeSlots(const std::vector<FreeSlot> &slots, OutputFormat format,
+                            const FormatOptions &options);
+
+std::string formatAlarms(const std::vector<AlarmTrigger> &triggers, OutputFormat format,
+                         const FormatOptions &options);
 
 // The value `add`, `edit` and `duplicate` print: a bare id, or {"id":N}.
 std::string formatId(long long id, OutputFormat format);
