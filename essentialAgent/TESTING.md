@@ -71,14 +71,16 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Pure model / parsing (`event`, ISO 8601, priority→colour) | `core/tests/` | the one source file, nothing else | none |
 | Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
-| CLI end-to-end (later) | `cli/tests/` | `klend_ario_core` | temp DB |
+| CLI end-to-end (`add`/`list`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 `holidays_test` tests the **boundary**, not the calendar: the child's own suites
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 18 suites, not 11.
+That is why the parent currently reports 18 suites, not 11. The CLI's
+`holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
+themselves stay pinned by the child suites and `holidays_test`.
 
 **Narrow is the point.** A pure-logic test should link its one source file and
 nothing else — if it needs more, the source picked up a dependency it should not

@@ -93,6 +93,29 @@ void testPositionalId() {
     assert(rm.id == 7);
 }
 
+void testHolidaysVerb() {
+    const Args defaults = parse({"holidays"});
+    assert(defaults.error.empty());
+    assert(defaults.verb == Verb::Holidays);
+    assert(defaults.country == "PE");
+    assert(defaults.year == 0);
+    assert(!defaults.yearGiven); // the command resolves "now"
+
+    const Args a = parse({"holidays", "--country", "pe", "--year", "2026", "--json"});
+    assert(a.error.empty());
+    assert(a.verb == Verb::Holidays);
+    assert(a.country == "pe");
+    assert(a.year == 2026);
+    assert(a.yearGiven);
+    assert(a.json);
+
+    // The year is validated by the command, but it must still parse as an int,
+    // and holidays takes no positional argument.
+    assert(!parse({"holidays", "--year", "x"}).error.empty());
+    assert(!parse({"holidays", "--country"}).error.empty());
+    assert(!parse({"holidays", "2026"}).error.empty());
+}
+
 void testUsageErrors() {
     // Missing value.
     assert(!parse({"add", "--title"}).error.empty());
@@ -117,6 +140,7 @@ int main() {
     testDbAndRangeFlags();
     testKeyFileFlag();
     testPositionalId();
+    testHolidaysVerb();
     testUsageErrors();
     std::printf("args_test: all assertions passed\n");
     return 0;

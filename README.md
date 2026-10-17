@@ -35,6 +35,8 @@ ctest --test-dir build --output-on-failure
 
 ```bash
 ./build/cli/klend_ario_cli --help
+./build/cli/klend_ario_cli holidays --year 2026          # Peru's feriados
+./build/cli/klend_ario_cli holidays --year 2026 --json   # machine-readable
 ```
 
 ## Layout

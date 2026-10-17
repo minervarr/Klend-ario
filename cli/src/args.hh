@@ -14,7 +14,7 @@
 
 namespace klend_ario::cli {
 
-enum class Verb { None, Help, Add, List, Show, Remove };
+enum class Verb { None, Help, Add, List, Show, Remove, Holidays };
 
 struct Args {
     Verb verb = Verb::None;
@@ -38,6 +38,11 @@ struct Args {
     // list
     std::string from; // ISO-8601 text, verbatim (empty => now)
     std::string to;   // ISO-8601 text, verbatim (empty => from + 7 days)
+
+    // holidays
+    std::string country = "PE";
+    int year = 0;           // meaningful only when yearGiven
+    bool yearGiven = false; // keeps an explicit 0 from meaning "now"
 
     // show / rm
     long long id = 0;

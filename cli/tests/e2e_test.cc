@@ -80,6 +80,15 @@ int main() {
     assert(run({"list", "--db", dbPath, "--from", "2026-10-01T00:00:00Z", "--to",
                 "2026-11-01T00:00:00Z"}) == kExitOk);
 
+    // holidays: a civil-date query over core. It never opens a database, so
+    // there is no --db here on purpose.
+    assert(run({"holidays", "--year", "2026"}) == kExitOk);
+    assert(run({"holidays", "--year", "2026", "--json"}) == kExitOk);
+    // An unknown country is an error; an impossible year is a usage error.
+    assert(run({"holidays", "--country", "XX", "--year", "2026"}) == kExitError);
+    assert(run({"holidays", "--year", "0"}) == kExitUsage);
+    assert(run({"holidays", "--year", "10000"}) == kExitUsage);
+
     // --help exits 0.
     assert(run({"--help"}) == kExitOk);
 

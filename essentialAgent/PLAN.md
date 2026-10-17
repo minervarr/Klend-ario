@@ -114,6 +114,15 @@ ctest --test-dir build --output-on-failure      # all pass
 
 Newest first. One line per meaningful change.
 
+- **CLI gained a `holidays` verb.** `klend_ario_cli holidays [--country PE]
+  [--year N] [--json]` calls `klend_ario::holidaysFor` through core and prints
+  the library's canonical `YYYY-MM-DD Name` lines (or a JSON array with
+  `date`/`name`/`non_working`/`observed`). It never opens the database. The
+  default year is the current UTC year via `weekOfYearUtc`, and `Args` carries
+  `yearGiven` so an explicit `--year 0` is a usage error rather than "now".
+  Covered by new `args_test` parsing cases and `e2e_test` dispatch/validation
+  cases. No submodule or pin change.
+
 - **pe-holiday-calc integrated into core.** Root CMake adds
   `libs/firstparty/pe-holiday-calc` and `klend_ario_core` links
   `pe_holiday_calc`. `core/include/klend_ario/holidays.hh` exposes

@@ -55,6 +55,8 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             a.verb = Verb::Show;
         } else if (verb == "rm" || verb == "remove") {
             a.verb = Verb::Remove;
+        } else if (verb == "holidays") {
+            a.verb = Verb::Holidays;
         } else if (verb == "help") {
             a.verb = Verb::Help;
         } else {
@@ -125,6 +127,15 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!takeValue(a.to, "--to")) {
                 return a;
             }
+        } else if (token == "--country") {
+            if (!takeValue(a.country, "--country")) {
+                return a;
+            }
+        } else if (token == "--year") {
+            if (!takeInt(a.year, "--year")) {
+                return a;
+            }
+            a.yearGiven = true;
         } else if (token == "--importance") {
             if (!takeInt(a.importance, "--importance")) {
                 return a;
@@ -177,6 +188,7 @@ std::string usage() {
            "  list    list events overlapping a time range\n"
            "  show    show one event by id\n"
            "  rm      delete one event by id\n"
+           "  holidays  list a country's public holidays for a year\n"
            "\n"
            "add options:\n"
            "  --title T          event title (required)\n"
@@ -192,6 +204,10 @@ std::string usage() {
            "list options:\n"
            "  --from ISO         lower bound (default: now)\n"
            "  --to ISO           upper bound (default: from + 7 days)\n"
+           "\n"
+           "holidays options:\n"
+           "  --country CC       ISO country code (default PE)\n"
+           "  --year N           year 1..9999 (default: current UTC year)\n"
            "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"

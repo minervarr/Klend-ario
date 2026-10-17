@@ -12,6 +12,7 @@
 #include "arc/fs/paths.hh"
 #include "klend_ario/db.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/holidays.hh"
 #include "klend_ario/sync.hh"
 
 namespace klend_ario::cli {
@@ -20,6 +21,7 @@ namespace {
 using klend_ario::Db;
 using klend_ario::Event;
 using klend_ario::EventType;
+using klend_ario::holidays::Holiday;
 
 constexpr long long kWeekSeconds = 7 * 86400;
 
@@ -96,6 +98,18 @@ void printEventJson(const Event &e) {
                 klend_ario::formatIso8601(e.endUtc).c_str(), klend_ario::eventTypeName(e.type),
                 e.importance, e.urgency, e.alarmOffset, e.hidden ? "true" : "false",
                 jsonEscape(e.notes).c_str());
+}
+
+void printHolidayJson(const Holiday &h) {
+    std::printf("{\"date\":\"%s\",\"name\":\"%s\",\"non_working\":%s,\"observed\":",
+                h.date.toString().c_str(), jsonEscape(std::string(h.name)).c_str(),
+                h.nonWorking ? "true" : "false");
+    if (h.observed) {
+        std::printf("\"%s\"", h.observed->toString().c_str());
+    } else {
+        std::printf("null");
+    }
+    std::printf("}");
 }
 
 // The passphrase, from --key-file (first line) or $KLEND_ARIO_KEY. An explicit
@@ -284,6 +298,40 @@ int commandRemove(const Args &args) {
     return kExitOk;
 }
 
+// Holidays are civil dates, not instants, and never need the database. The
+// core adapter turns the library's optional answers into arc::Result, so an
+// unknown country is the only error path here.
+int commandHolidays(const Args &args) {
+    int year = args.year;
+    if (!args.yearGiven) {
+        year = klend_ario::weekOfYearUtc(klend_ario::utcNowSeconds()).year;
+    }
+    if (year < 1 || year > 9999) {
+        return usageError("--year must be 1..9999");
+    }
+
+    auto calendar = klend_ario::holidaysFor(args.country, year);
+    if (!calendar) {
+        return reportError(calendar.error());
+    }
+
+    if (args.json) {
+        std::printf("[");
+        for (size_t i = 0; i < calendar.value().size(); ++i) {
+            if (i != 0) {
+                std::printf(",");
+            }
+            printHolidayJson(calendar.value()[i]);
+        }
+        std::printf("]\n");
+    } else {
+        for (const Holiday &h : calendar.value()) {
+            std::printf("%s\n", h.toString().c_str());
+        }
+    }
+    return kExitOk;
+}
+
 } // namespace
 
 int runCommand(const Args &args) {
@@ -303,6 +351,8 @@ int runCommand(const Args &args) {
         return commandShow(args);
     case Verb::Remove:
         return commandRemove(args);
+    case Verb::Holidays:
+        return commandHolidays(args);
     case Verb::None:
         break;
     }
