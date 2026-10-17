@@ -74,6 +74,10 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
 - **UTC + half-open days.** Store Unix seconds UTC; the interval is
   `[0, 86400)`. Local zones are display-only; never put `<ctime>`/local-zone
   logic or NTP in `core/`.
+- **Queries go through core.** Build an `EventQuery` and call
+  `Db::queryEvents`; never filter a `listEvents` result in a frontend and never
+  interpolate user text into SQL. `hidden` is a view flag: `list`/`search` see
+  hidden rows, view verbs filter them.
 - **No speculative storage rewrite.** SQLite stays until a benchmark proves a
   JSON store faster on the real operations; encryption is not a blocker.
 - **Captured ≠ built.** Notes, the 10 h sleep scheduler, G-SHOCK sync, and NTP

@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <utility>
 
 namespace klend_ario {
@@ -316,15 +317,115 @@ arc::Result<Event> Db::getEvent(long long id) {
 }
 
 arc::Result<std::vector<Event>> Db::listEvents(long long fromUtc, long long toUtc) {
-    const std::string sql = std::string("SELECT ") + kColumns +
-                            " FROM events WHERE start_utc < ? AND end_utc > ? "
-                            "ORDER BY start_utc, id";
+    EventQuery query;
+    query.fromUtc = fromUtc;
+    query.toUtc = toUtc;
+    return queryEvents(query);
+}
+
+arc::Result<std::vector<Event>> Db::queryEvents(const EventQuery &query) {
+    // One builder, one statement. Every user value is a bind parameter; only
+    // the ORDER BY keywords are chosen from a switch, never copied from a
+    // string, so a search term can never change the shape of the query.
+    struct Binding {
+        bool isText = false;
+        long long number = 0;
+        std::string text;
+    };
+
+    std::string sql = std::string("SELECT ") + kColumns + " FROM events WHERE 1=1";
+    std::vector<Binding> bindings;
+
+    auto bindNumber = [&](long long value) { bindings.push_back(Binding{false, value, {}}); };
+    auto bindText = [&](const std::string &value) { bindings.push_back(Binding{true, 0, value}); };
+
+    // Omit a bound that is still at its sentinel: an unbounded search should
+    // not pay for a comparison against the end of time.
+    if (query.toUtc != std::numeric_limits<long long>::max()) {
+        sql += " AND start_utc < ?";
+        bindNumber(query.toUtc);
+    }
+    if (query.fromUtc != std::numeric_limits<long long>::min()) {
+        sql += " AND end_utc > ?";
+        bindNumber(query.fromUtc);
+    }
+    if (!query.text.empty()) {
+        // instr() is a literal substring search: unlike LIKE, `%` and `_` are
+        // ordinary characters. lower() folds ASCII only; that is the promise.
+        sql += " AND instr(lower(title || ' ' || ifnull(notes, '')), lower(?)) > 0";
+        bindText(query.text);
+    }
+    if (query.type) {
+        sql += " AND type = ?";
+        bindText(eventTypeName(*query.type));
+    }
+    if (query.minImportance > 0 || query.maxImportance < 100) {
+        sql += " AND importance BETWEEN ? AND ?";
+        bindNumber(query.minImportance);
+        bindNumber(query.maxImportance);
+    }
+    if (query.minUrgency > 0 || query.maxUrgency < 100) {
+        sql += " AND urgency BETWEEN ? AND ?";
+        bindNumber(query.minUrgency);
+        bindNumber(query.maxUrgency);
+    }
+    if (query.visibility != Visibility::Any) {
+        sql += " AND hidden = ?";
+        bindNumber(query.visibility == Visibility::Hidden ? 1 : 0);
+    }
+
+    const char *order = "start_utc, id";
+    switch (query.sort) {
+    case EventSort::Start:
+        order = "start_utc, id";
+        break;
+    case EventSort::StartDesc:
+        order = "start_utc DESC, id DESC";
+        break;
+    case EventSort::Importance:
+        // Most important first, then most urgent: importance alone leaves a
+        // lot of ties at 50, and a stable tie-break makes tests (and pagination)
+        // meaningful.
+        order = "importance DESC, urgency DESC, start_utc, id";
+        break;
+    case EventSort::Urgency:
+        order = "urgency DESC, importance DESC, start_utc, id";
+        break;
+    case EventSort::Updated:
+        order = "updated_utc DESC, id DESC";
+        break;
+    case EventSort::Title:
+        order = "title COLLATE NOCASE, start_utc, id";
+        break;
+    }
+    sql += " ORDER BY ";
+    sql += order;
+
+    if (query.limit >= 0) {
+        sql += " LIMIT ?";
+        bindNumber(query.limit);
+        if (query.offset > 0) {
+            sql += " OFFSET ?";
+            bindNumber(query.offset);
+        }
+    } else if (query.offset > 0) {
+        // SQLite needs LIMIT before OFFSET; -1 means "no limit".
+        sql += " LIMIT -1 OFFSET ?";
+        bindNumber(query.offset);
+    }
+
     Statement stmt;
     if (auto prepared = stmt.prepare(db_, sql.c_str()); !prepared) {
         return prepared.error();
     }
-    stmt.bindInt(1, toUtc);
-    stmt.bindInt(2, fromUtc);
+    for (size_t i = 0; i < bindings.size(); ++i) {
+        const int index = static_cast<int>(i) + 1;
+        if (bindings[i].isText) {
+            stmt.bindText(index, bindings[i].text);
+        } else {
+            stmt.bindInt(index, bindings[i].number);
+        }
+    }
 
     std::vector<Event> events;
     for (;;) {

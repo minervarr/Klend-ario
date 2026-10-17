@@ -7,11 +7,13 @@
 
 #include "commands.hh"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include "arc/fs/paths.hh"
 #include "format.hh"
@@ -26,7 +28,10 @@ namespace {
 
 using klend_ario::Db;
 using klend_ario::Event;
+using klend_ario::EventQuery;
+using klend_ario::EventSort;
 using klend_ario::EventType;
+using klend_ario::Visibility;
 
 constexpr long long kDaySeconds = 86400;
 constexpr long long kWeekSeconds = 7 * kDaySeconds;
@@ -385,21 +390,191 @@ int commandDuplicate(const Args &args, OutputFormat format, const FormatOptions 
     return kExitOk;
 }
 
-int commandList(const Args &args, OutputFormat format, const FormatOptions &options) {
-    const long long now = klend_ario::utcNowSeconds();
+std::string trimCopy(std::string_view text) {
+    size_t begin = 0;
+    size_t end = text.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(text[begin])) != 0) {
+        ++begin;
+    }
+    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
+        --end;
+    }
+    return std::string(text.substr(begin, end - begin));
+}
 
-    // A calendar's natural default is the current day, not the current second.
-    long long from = startOfDayUtc(now);
-    if (!args.from.empty()) {
-        const auto parsed = parseInstant(args.from, now);
+// A hidden row is a real row: list/search are data access and see everything.
+// The view verbs mirror the weekly view, which hides sleep blocks by default.
+Visibility defaultVisibilityFor(Verb verb) {
+    if (verb == Verb::List || verb == Verb::Search) {
+        return Visibility::Any;
+    }
+    return Visibility::Visible;
+}
+
+int resolveVisibility(const Args &args, Verb verb, Visibility &out) {
+    const int chosen = (args.visibleOnly ? 1 : 0) + (args.hiddenOnly ? 1 : 0) +
+                       (args.includeHidden ? 1 : 0);
+    if (chosen > 1) {
+        return usageError("--visible, --hidden-only and --include-hidden are mutually exclusive");
+    }
+    if (args.hiddenOnly) {
+        out = Visibility::Hidden;
+    } else if (args.includeHidden) {
+        out = Visibility::Any;
+    } else if (args.visibleOnly) {
+        out = Visibility::Visible;
+    } else {
+        out = defaultVisibilityFor(verb);
+    }
+    return kExitOk;
+}
+
+int resolveSort(const Args &args, Verb verb, EventSort &out) {
+    if (verb == Verb::Next && args.sortGiven) {
+        return usageError("next is always ordered by start; use --limit to widen it");
+    }
+    if (!args.sortGiven) {
+        // Search is a find, so the most recent match is usually the one meant.
+        out = verb == Verb::Search ? EventSort::StartDesc : EventSort::Start;
+        return kExitOk;
+    }
+    if (!klend_ario::eventSortFromName(args.sort, out)) {
+        return usageError("--sort must be start|-start|importance|urgency|updated|title");
+    }
+    return kExitOk;
+}
+
+int applyQueryFilters(const Args &args, EventQuery &query) {
+    if (args.typeGiven) {
+        EventType type = EventType::Event;
+        if (!klend_ario::eventTypeFromName(args.type, type)) {
+            return usageError("--type must be event|sleep|wake|alarm");
+        }
+        query.type = type;
+    }
+
+    if (args.minImportanceGiven) {
+        if (args.minImportance < 0 || args.minImportance > 100) {
+            return usageError("--min-importance must be 0..100");
+        }
+        query.minImportance = args.minImportance;
+    }
+    if (args.maxImportanceGiven) {
+        if (args.maxImportance < 0 || args.maxImportance > 100) {
+            return usageError("--max-importance must be 0..100");
+        }
+        query.maxImportance = args.maxImportance;
+    }
+    if (query.minImportance > query.maxImportance) {
+        return usageError("--min-importance is greater than --max-importance");
+    }
+
+    if (args.minUrgencyGiven) {
+        if (args.minUrgency < 0 || args.minUrgency > 100) {
+            return usageError("--min-urgency must be 0..100");
+        }
+        query.minUrgency = args.minUrgency;
+    }
+    if (args.maxUrgencyGiven) {
+        if (args.maxUrgency < 0 || args.maxUrgency > 100) {
+            return usageError("--max-urgency must be 0..100");
+        }
+        query.maxUrgency = args.maxUrgency;
+    }
+    if (query.minUrgency > query.maxUrgency) {
+        return usageError("--min-urgency is greater than --max-urgency");
+    }
+
+    if (args.searchGiven) {
+        const std::string text = trimCopy(args.search);
+        if (text.empty()) {
+            return usageError("--search must not be empty");
+        }
+        query.text = text;
+    }
+    return kExitOk;
+}
+
+int resolveQueryRange(const Args &args, Verb verb, long long nowUtc, EventQuery &query) {
+    const long long dayStart = startOfDayUtc(nowUtc);
+    long long from = 0;
+
+    switch (verb) {
+    case Verb::List:
+    case Verb::Today:
+        from = dayStart;
+        break;
+    case Verb::Week:
+        from = klend_ario::startOfWeekUtc(nowUtc);
+        break;
+    case Verb::Next:
+    case Verb::Agenda:
+        from = nowUtc;
+        break;
+    case Verb::Search:
+        from = std::numeric_limits<long long>::min();
+        break;
+    default:
+        return usageError("internal error: not a query verb");
+    }
+
+    if (args.fromGiven) {
+        const auto parsed = parseInstant(args.from, nowUtc);
         if (!parsed) {
             return usageError("--from is not a UTC instant (e.g. today, 2026-10-16, now)");
         }
         from = *parsed;
     }
-    long long to = from + kWeekSeconds;
-    if (!args.to.empty()) {
-        const auto parsed = parseInstant(args.to, now);
+
+    if (verb != Verb::Agenda && args.daysGiven) {
+        return usageError("--days is only valid for agenda");
+    }
+    if (verb == Verb::Agenda && args.daysGiven && args.toGiven) {
+        return usageError("agenda takes --days or --to, not both");
+    }
+
+    long long to = 0;
+    switch (verb) {
+    case Verb::List:
+    case Verb::Week:
+        if (!addChecked(from, kWeekSeconds, to)) {
+            return usageError("--from is out of range");
+        }
+        break;
+    case Verb::Today:
+        if (!addChecked(from, kDaySeconds, to)) {
+            return usageError("--from is out of range");
+        }
+        break;
+    case Verb::Next:
+    case Verb::Search:
+        to = std::numeric_limits<long long>::max();
+        break;
+    case Verb::Agenda: {
+        if (args.toGiven) {
+            const auto parsed = parseInstant(args.to, nowUtc);
+            if (!parsed) {
+                return usageError("--to is not a UTC instant");
+            }
+            to = *parsed;
+        } else {
+            const int days = args.daysGiven ? args.days : 7;
+            if (days < 1 || days > 3660) {
+                return usageError("--days must be 1..3660");
+            }
+            const long long span = static_cast<long long>(days) * kDaySeconds;
+            if (!addChecked(from, span, to)) {
+                return usageError("--days is out of range");
+            }
+        }
+        break;
+    }
+    default:
+        return usageError("internal error: not a query verb");
+    }
+
+    if (verb != Verb::Agenda && args.toGiven) {
+        const auto parsed = parseInstant(args.to, nowUtc);
         if (!parsed) {
             return usageError("--to is not a UTC instant (e.g. week, tomorrow, 2026-10-23)");
         }
@@ -409,11 +584,45 @@ int commandList(const Args &args, OutputFormat format, const FormatOptions &opti
         return usageError("--to is before --from");
     }
 
+    query.fromUtc = from;
+    query.toUtc = to;
+    return kExitOk;
+}
+
+int commandQuery(const Args &args, Verb verb, OutputFormat format, const FormatOptions &options) {
+    if (verb == Verb::Search && !args.searchGiven) {
+        return usageError("search needs a query (quote it if it contains spaces)");
+    }
+
+    const long long now = klend_ario::utcNowSeconds();
+    EventQuery query;
+
+    if (const int rc = resolveQueryRange(args, verb, now, query); rc != kExitOk) {
+        return rc;
+    }
+    if (const int rc = applyQueryFilters(args, query); rc != kExitOk) {
+        return rc;
+    }
+    if (verb == Verb::Search && query.text.empty()) {
+        return usageError("search needs a non-empty query");
+    }
+    if (const int rc = resolveVisibility(args, verb, query.visibility); rc != kExitOk) {
+        return rc;
+    }
+    if (const int rc = resolveSort(args, verb, query.sort); rc != kExitOk) {
+        return rc;
+    }
+
+    // `next` is singular unless the caller widens it; everything else is
+    // unbounded unless --limit says otherwise.
+    query.limit = args.limitGiven ? args.limit : (verb == Verb::Next ? 1 : -1);
+    query.offset = args.offset;
+
     Db db;
     if (const int rc = openDb(args, db); rc != kExitOk) {
         return rc;
     }
-    auto events = db.listEvents(from, to);
+    auto events = db.queryEvents(query);
     if (!events) {
         return reportError(events.error());
     }
@@ -512,7 +721,17 @@ int runCommand(const Args &args) {
     case Verb::Duplicate:
         return commandDuplicate(args, format, options);
     case Verb::List:
-        return commandList(args, format, options);
+        return commandQuery(args, Verb::List, format, options);
+    case Verb::Today:
+        return commandQuery(args, Verb::Today, format, options);
+    case Verb::Week:
+        return commandQuery(args, Verb::Week, format, options);
+    case Verb::Next:
+        return commandQuery(args, Verb::Next, format, options);
+    case Verb::Agenda:
+        return commandQuery(args, Verb::Agenda, format, options);
+    case Verb::Search:
+        return commandQuery(args, Verb::Search, format, options);
     case Verb::Show:
         return commandShow(args, format, options);
     case Verb::Remove:

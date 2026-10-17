@@ -5,6 +5,7 @@
 
 #include "arc/result.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/query.hh"
 
 // sqlite3 is a C API; forward-declare it so this header stays free of the
 // sqlite3 include and callers never see the C surface. The definition is
@@ -56,8 +57,14 @@ public:
     arc::Result<Event> getEvent(long long id);
 
     // Events overlapping [fromUtc, toUtc), ordered by start. A half-open range,
-    // so adjacent queries do not double-count a boundary event.
+    // so adjacent queries do not double-count a boundary event. A convenience
+    // wrapper over queryEvents, so both share one SQL implementation.
     arc::Result<std::vector<Event>> listEvents(long long fromUtc, long long toUtc);
+
+    // Filtered, ordered, paginated query. Text is matched literally and
+    // case-insensitively (ASCII) against title and notes; `%` and `_` are not
+    // wildcards. The range is half-open, as above.
+    arc::Result<std::vector<Event>> queryEvents(const EventQuery &query);
 
     // Deletes `id`. Succeeds even when nothing matched.
     arc::Result<void> removeEvent(long long id);

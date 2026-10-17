@@ -7,6 +7,10 @@
 #include <string_view>
 #include <vector>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "commands.hh"
 
 #include "klend_ario/db.hh"
@@ -16,6 +20,52 @@ using namespace klend_ario::cli;
 namespace {
 
 int run(std::vector<std::string_view> tokens) { return runCommand(parseArgs(tokens)); }
+
+#ifndef _WIN32
+// Capture stdout for ONE command. The query verbs are only wired correctly if
+// the filter actually reaches core, and an exit code cannot see that; this
+// keeps the check in-process (no shell, no second binary) and restores stdout
+// before the assertion so a failure still prints normally.
+struct Capture {
+    int code = kExitError;
+    std::string output;
+};
+
+Capture runCaptured(std::vector<std::string_view> tokens) {
+    std::fflush(stdout);
+    FILE *file = std::tmpfile();
+    assert(file != nullptr);
+    const int saved = dup(fileno(stdout));
+    assert(saved >= 0);
+    assert(dup2(fileno(file), fileno(stdout)) >= 0);
+
+    Capture capture;
+    capture.code = runCommand(parseArgs(tokens));
+
+    std::fflush(stdout);
+    assert(dup2(saved, fileno(stdout)) >= 0);
+    close(saved);
+
+    std::rewind(file);
+    char buffer[512];
+    size_t read = 0;
+    while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        capture.output.append(buffer, read);
+    }
+    std::fclose(file);
+    return capture;
+}
+
+size_t countLines(const std::string &text) {
+    size_t lines = 0;
+    for (const char c : text) {
+        if (c == '\n') {
+            ++lines;
+        }
+    }
+    return lines;
+}
+#endif
 
 } // namespace
 
@@ -232,6 +282,145 @@ int main() {
     assert(run({"edit", "--help"}) == kExitOk);
 
     std::remove(verbsDb);
+
+    // ---------------------------------------------------------------------
+    // Stage 4: query verbs, filters, sorting, pagination and hidden policy.
+    // ---------------------------------------------------------------------
+    const char *queryDb = "klend_e2e_query.db";
+    std::remove(queryDb);
+
+    // One ongoing event, one hidden event two hours out, and two past events.
+    assert(run({"add", "--db", queryDb, "Now", "--duration", "1h", "--importance", "90",
+                "--urgency", "80", "--notes", "alpha"}) == kExitOk);
+    assert(run({"add", "--db", queryDb, "Hidden", "--start", "now+2h", "--duration", "1h",
+                "--hidden", "--notes", "alpha"}) == kExitOk);
+    assert(run({"add", "--db", queryDb, "Old", "--start", "2026-10-16T09:00:00Z", "--end",
+                "2026-10-16T09:30:00Z", "--importance", "10", "--notes", "beta"}) == kExitOk);
+    assert(run({"add", "--db", queryDb, "Dawn", "--type", "sleep", "--start",
+                "2026-10-16T05:00:00Z", "--end", "2026-10-16T06:00:00Z", "--hidden"}) == kExitOk);
+
+#ifndef _WIN32
+    {
+        // next = the ongoing visible event, not the hidden block later.
+        const Capture next = runCaptured({"next", "--db", queryDb, "--format", "csv"});
+        assert(next.code == kExitOk);
+        assert(next.output.find("Now") != std::string::npos);
+        assert(next.output.find("Hidden") == std::string::npos);
+    }
+    {
+        // --hidden-only flips the visibility filter for the same query.
+        const Capture hidden = runCaptured({"next", "--db", queryDb, "--hidden-only",
+                                            "--format", "csv"});
+        assert(hidden.code == kExitOk);
+        assert(hidden.output.find("Hidden") != std::string::npos);
+        assert(hidden.output.find("Now") == std::string::npos);
+    }
+    {
+        // --limit widens next; with hidden included there are two rows.
+        const Capture widened = runCaptured({"next", "--db", queryDb, "--limit", "2",
+                                             "--include-hidden", "--format", "csv"});
+        assert(widened.code == kExitOk);
+        assert(countLines(widened.output) == 3); // header + Now + Hidden
+    }
+    {
+        // search is unbounded and newest-first by default.
+        const Capture search = runCaptured({"search", "alpha", "--db", queryDb, "--format",
+                                            "csv"});
+        assert(search.code == kExitOk);
+        assert(search.output.find("Now") != std::string::npos);
+        assert(search.output.find("Hidden") != std::string::npos);
+        assert(search.output.find("Old") == std::string::npos);
+        assert(search.output.find("Hidden") < search.output.find("Now"));
+    }
+    {
+        const Capture visible = runCaptured({"search", "alpha", "--db", queryDb, "--visible",
+                                            "--format", "csv"});
+        assert(visible.code == kExitOk);
+        assert(visible.output.find("Now") != std::string::npos);
+        assert(visible.output.find("Hidden") == std::string::npos);
+    }
+    {
+        const Capture hidden = runCaptured({"search", "alpha", "--db", queryDb, "--hidden-only",
+                                            "--format", "csv"});
+        assert(hidden.code == kExitOk);
+        assert(hidden.output.find("Hidden") != std::string::npos);
+        assert(hidden.output.find("Now") == std::string::npos);
+    }
+    {
+        const Capture beta = runCaptured({"search", "beta", "--db", queryDb, "--format", "csv"});
+        assert(beta.code == kExitOk);
+        assert(beta.output.find("Old") != std::string::npos);
+        assert(beta.output.find("Now") == std::string::npos);
+    }
+    {
+        // Filters compose, and --search works on list too.
+        const Capture typed = runCaptured({"search", "alpha", "--db", queryDb, "--type", "sleep",
+                                           "--format", "csv"});
+        assert(typed.code == kExitOk);
+        assert(typed.output.find("Now") == std::string::npos);
+        assert(typed.output.find("Hidden") == std::string::npos);
+
+        const Capture important = runCaptured({"search", "alpha", "--db", queryDb,
+                                               "--min-importance", "80", "--format", "csv"});
+        assert(important.code == kExitOk);
+        assert(important.output.find("Now") != std::string::npos);
+        assert(important.output.find("Hidden") == std::string::npos);
+
+        const Capture ranged = runCaptured({"list", "--db", queryDb, "--from", "2026-10-16",
+                                            "--to", "2026-10-17", "--search", "beta", "--format",
+                                            "csv"});
+        assert(ranged.code == kExitOk);
+        assert(ranged.output.find("Old") != std::string::npos);
+        assert(ranged.output.find("Dawn") == std::string::npos);
+    }
+    {
+        // Pagination after ordering: newest-first, so row 0 is Hidden.
+        const Capture first = runCaptured({"search", "alpha", "--db", queryDb, "--limit", "1",
+                                           "--format", "csv"});
+        assert(first.code == kExitOk);
+        assert(countLines(first.output) == 2);
+        assert(first.output.find("Hidden") != std::string::npos);
+        assert(first.output.find("Now") == std::string::npos);
+
+        const Capture second = runCaptured({"search", "alpha", "--db", queryDb, "--offset", "1",
+                                            "--limit", "1", "--format", "csv"});
+        assert(second.code == kExitOk);
+        assert(countLines(second.output) == 2);
+        assert(second.output.find("Now") != std::string::npos);
+        assert(second.output.find("Hidden") == std::string::npos);
+
+        const Capture oldestFirst = runCaptured({"search", "alpha", "--db", queryDb, "--sort",
+                                                 "start", "--format", "csv"});
+        assert(oldestFirst.code == kExitOk);
+        assert(oldestFirst.output.find("Now") < oldestFirst.output.find("Hidden"));
+    }
+#endif
+
+    // The view verbs reach core. Their exact rows depend on the real clock, so
+    // query_test pins the logic and these pin the wiring.
+    assert(run({"today", "--db", queryDb}) == kExitOk);
+    assert(run({"today", "--db", queryDb, "--include-hidden", "--format", "table"}) == kExitOk);
+    assert(run({"week", "--db", queryDb, "--format", "json"}) == kExitOk);
+    assert(run({"agenda", "--db", queryDb, "--days", "2"}) == kExitOk);
+    assert(run({"list", "--db", queryDb, "--sort", "importance", "--limit", "2"}) == kExitOk);
+
+    // Usage errors: bad names, ranges, and query-only flags on mutation verbs.
+    assert(run({"agenda", "--db", queryDb, "--days", "0"}) == kExitUsage);
+    assert(run({"agenda", "--db", queryDb, "--days", "2", "--to", "tomorrow"}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--days", "2"}) == kExitUsage);
+    assert(run({"next", "--db", queryDb, "--sort", "updated"}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--sort", "banana"}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--type", "banana"}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--min-importance", "101"}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--min-importance", "90", "--max-importance", "10"}) ==
+           kExitUsage);
+    assert(run({"list", "--db", queryDb, "--search", ""}) == kExitUsage);
+    assert(run({"search", "--db", queryDb}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--visible", "--hidden-only"}) == kExitUsage);
+    assert(run({"list", "--db", queryDb, "--limit", "-1"}) == kExitUsage);
+    assert(run({"add", "--db", queryDb, "--search", "x"}) == kExitUsage);
+
+    std::remove(queryDb);
 
     // ---------------------------------------------------------------------
     // An encrypted database, through the CLI, via --key-file.

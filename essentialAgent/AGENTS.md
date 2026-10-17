@@ -131,6 +131,11 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
 - **CLI output** is rendered by the pure functions in `cli/src/format.cc`
   (text/table/json/csv/tsv) and printed once. Do not `printf` rows from inside a
   command; that is what made the visible contract untestable.
+- **Queries are a core value.** Build an `EventQuery` and call
+  `Db::queryEvents`; do not filter a `listEvents` result in a frontend. Text is
+  bound, `ORDER BY` is a whitelist, and the half-open overlap rule lives in one
+  place (`listEvents` delegates). `hidden` is a weekly-view flag, not deletion:
+  data verbs see hidden rows, view verbs filter them by default.
 - **A partial edit changes only supplied flags.** Carry a `*Given` flag in
   `Args` for every editable field; a default value cannot mean "leave alone".
 - Every comment that explains a *surprising* choice is worth its weight. Every

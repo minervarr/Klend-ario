@@ -66,14 +66,18 @@ work is staged so each layer is useful and tested on its own; logic stays in
 - [x] **Stage 3 — relative time.** Pure `core/timeexpr` grammar: `now`,
       `today`/`tomorrow`/`yesterday`, `week`/`next-week`/`last-week`,
       `sunday..saturday`, `today+2h`, `+90m`, and durations `90m`/`1h30m`/`1d`.
-- [ ] **Stage 4 — query power.** Search/type/importance filters, sort,
-      limit/offset; `today`, `week`, `next`, `agenda`, `search`.
+- [x] **Stage 4 — query power.** `EventQuery` + `Db::queryEvents` (one
+      parameterized SQL builder; `listEvents` delegates to it). `today`, `week`,
+      `next`, `agenda`, `search`; filters `--type`, `--search`,
+      `--min/max-importance`, `--min/max-urgency`; visibility
+      `--visible`/`--hidden-only`/`--include-hidden`; `--sort`, `--limit`,
+      `--offset`. Literal substring search; no FTS or migration.
 - [ ] **Stage 5 — intelligence.** `conflicts`, `free`, `alarms`, `stats`,
       `doctor`.
 - [ ] **Stage 6 — portability.** `export`/`import` (csv/jsonl/ics export),
       `completion`.
 
-Stages 4–6 are planned, not built. GUI Phase 4 resumes after these unless the
+Stages 5–6 are planned, not built. GUI Phase 4 resumes after these unless the
 order changes again — see the status log.
 
 ---
@@ -162,7 +166,7 @@ ctest --test-dir build --output-on-failure      # all pass
 - [x] `core/tests/holidays_test.cc` asserts a known 2026 Peru calendar,
       case/trimmed lookup, the *día no laborable* negative, and the
       unknown-country error.
-- [x] The child's seven suites run through the parent's CTest (20 suites
+- [x] The child's seven suites run through the parent's CTest (21 suites
       total), so a parent `ctest` also protects the library.
 - [ ] Android NDK build of the child — open; no NDK/SDK in this environment.
 
@@ -171,6 +175,20 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **CLI hardening, Stage 4 — query power (2026-10-17).** Added
+  `core/query.hh` (`EventQuery`, `EventSort`, `Visibility`) and
+  `Db::queryEvents`: one prepared statement, bound user text, a fixed ORDER BY
+  whitelist, and `listEvents` delegating so the overlap rule has one
+  implementation. New verbs `today`, `week`, `next`, `agenda`, `search`; shared
+  filters `--search`/`--type`/`--min/max-importance`/`--min/max-urgency`,
+  visibility `--visible`/`--hidden-only`/`--include-hidden`, and
+  `--sort`/`--limit`/`--offset`. Views (`today`/`week`/`next`/`agenda`) default
+  to visible rows; `list`/`search` see hidden rows too. Search is a literal
+  ASCII case-insensitive substring of title+notes (no FTS, no migration), and
+  `next` is the first event with `end_utc > now`, including one already
+  underway. `query_test` (21 suites total) pins filtering, sorting, pagination
+  and half-open boundaries. No submodule change.
 
 - **CLI hardening, Stages 1–3 (2026-10-17).** The CLI is now the priority;
   GUI Phase 4 is paused, not cancelled. Added a pure rendering layer

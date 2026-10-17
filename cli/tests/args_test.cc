@@ -27,6 +27,11 @@ void testVerbs() {
     assert(parse({"duplicate"}).verb == Verb::Duplicate);
     assert(parse({"copy"}).verb == Verb::Duplicate);
     assert(parse({"list"}).verb == Verb::List);
+    assert(parse({"today"}).verb == Verb::Today);
+    assert(parse({"week"}).verb == Verb::Week);
+    assert(parse({"next"}).verb == Verb::Next);
+    assert(parse({"agenda"}).verb == Verb::Agenda);
+    assert(parse({"search"}).verb == Verb::Search);
     assert(parse({"show"}).verb == Verb::Show);
     assert(parse({"rm"}).verb == Verb::Remove);
     assert(parse({"remove"}).verb == Verb::Remove);
@@ -180,6 +185,92 @@ void testIntegerOverflowRejected() {
     assert(!parse({"add", "--urgency", "-99999999999999999999"}).error.empty());
 }
 
+void testQueryFlags() {
+    const Args a = parse({"list", "--from", "today", "--to", "week", "--search", "sync",
+                          "--type", "sleep", "--min-importance", "60", "--max-importance", "90",
+                          "--min-urgency", "10", "--max-urgency", "80", "--sort", "importance",
+                          "--limit", "5", "--offset", "2", "--visible"});
+    assert(a.error.empty());
+    assert(a.fromGiven && a.from == "today");
+    assert(a.toGiven && a.to == "week");
+    assert(a.searchGiven && a.search == "sync");
+    assert(a.typeGiven && a.type == "sleep");
+    assert(a.minImportanceGiven && a.minImportance == 60);
+    assert(a.maxImportanceGiven && a.maxImportance == 90);
+    assert(a.minUrgencyGiven && a.minUrgency == 10);
+    assert(a.maxUrgencyGiven && a.maxUrgency == 80);
+    assert(a.sortGiven && a.sort == "importance");
+    assert(a.limitGiven && a.limit == 5);
+    assert(a.offsetGiven && a.offset == 2);
+    assert(a.visibleOnly && !a.hiddenOnly && !a.includeHidden);
+
+    const Args defaults = parse({"list"});
+    assert(defaults.limit == -1);
+    assert(!defaults.limitGiven);
+    assert(defaults.offset == 0);
+    assert(defaults.sort == "start");
+    assert(!defaults.sortGiven);
+    assert(!defaults.searchGiven);
+
+    // Zero is a valid limit; a negative one is rejected at parse time.
+    assert(parse({"list", "--limit", "0"}).limit == 0);
+    assert(!parse({"list", "--limit", "-1"}).error.empty());
+    assert(!parse({"list", "--offset", "-1"}).error.empty());
+
+    const Args agenda = parse({"agenda", "--days", "3"});
+    assert(agenda.daysGiven && agenda.days == 3);
+    assert(!parse({"agenda", "--days", "-1"}).error.empty());
+
+    const Args hiddenOnly = parse({"list", "--hidden-only"});
+    assert(hiddenOnly.hiddenOnly && !hiddenOnly.visibleOnly);
+    const Args includeHidden = parse({"list", "--include-hidden"});
+    assert(includeHidden.includeHidden && !includeHidden.visibleOnly);
+
+    // The three visibility flags describe one choice.
+    assert(!parse({"list", "--visible", "--hidden-only"}).error.empty());
+    assert(!parse({"list", "--visible", "--include-hidden"}).error.empty());
+    assert(!parse({"list", "--hidden-only", "--include-hidden"}).error.empty());
+}
+
+void testSearchPositional() {
+    const Args positional = parse({"search", "daily sync"});
+    assert(positional.error.empty());
+    assert(positional.verb == Verb::Search);
+    assert(positional.searchGiven && positional.search == "daily sync");
+
+    const Args flag = parse({"search", "--search", "ana"});
+    assert(flag.error.empty());
+    assert(flag.searchGiven && flag.search == "ana");
+
+    // No query at all parses; the command reports the usage error.
+    const Args empty = parse({"search"});
+    assert(empty.error.empty());
+    assert(!empty.searchGiven);
+
+    // One query, not several positionals, and not both forms.
+    assert(!parse({"search", "one", "two"}).error.empty());
+    assert(!parse({"search", "one", "--search", "two"}).error.empty());
+    assert(!parse({"search", "--search", "one", "two"}).error.empty());
+    assert(!parse({"search", "--search", "one", "--search", "two"}).error.empty());
+}
+
+void testQueryOnlyFlagsRejectedOnMutation() {
+    assert(!parse({"add", "--limit", "2"}).error.empty());
+    assert(!parse({"add", "--search", "x"}).error.empty());
+    assert(!parse({"edit", "5", "--visible"}).error.empty());
+    assert(!parse({"show", "5", "--from", "today"}).error.empty());
+    assert(!parse({"rm", "5", "--sort", "start"}).error.empty());
+    assert(!parse({"holidays", "--days", "3"}).error.empty());
+
+    // The reverse trap: a mutation flag on a query must not be silently
+    // ignored (especially --importance, which is not the filter).
+    assert(!parse({"list", "--importance", "80"}).error.empty());
+    assert(!parse({"list", "--title", "x"}).error.empty());
+    assert(!parse({"search", "x", "--start", "today"}).error.empty());
+    assert(!parse({"list", "--hidden"}).error.empty());
+    assert(!parse({"list", "--unhide"}).error.empty());
+}
+
 void testHolidaysVerb() {
     const Args defaults = parse({"holidays"});
     assert(defaults.error.empty());
@@ -232,6 +323,9 @@ int main() {
     testShiftAndFormat();
     testHelpTopics();
     testIntegerOverflowRejected();
+    testQueryFlags();
+    testSearchPositional();
+    testQueryOnlyFlagsRejectedOnMutation();
     testHolidaysVerb();
     testUsageErrors();
     std::printf("args_test: all assertions passed\n");

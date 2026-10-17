@@ -72,9 +72,10 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | UTC / day arithmetic (`parseIso8601`, `formatIso8601`, half-open day) | `core/tests/event_test.cc` | `src/event.cc` | none |
 | User-facing instants/durations (`today`, `week+7d`, `90m`) | `core/tests/timeexpr_test.cc` | `src/timeexpr.cc src/event.cc` | none |
 | Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB |
+| Query filters/sort/pagination (`EventQuery` → SQL) | `core/tests/query_test.cc` | `src/db.cc src/schema.cc src/query.cc src/event.cc` + `sqlite3` | in-memory DB |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
-| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
+| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 ### Time and day model
@@ -104,6 +105,32 @@ test reads the clock:
 - Durations are `90m`, `2h`, `1h30m`, `1d`, `1w`, or a bare number of seconds.
   Overflow and unknown units are rejected (`Ok`/`nullopt`, never wrapped).
 
+### CLI query semantics
+
+`query_test` pins the query contract over an in-memory database:
+
+- The range is half-open overlap: `start_utc < to` **and** `end_utc > from`.
+  An event that began before `from` and is still running is included; an event
+  ending exactly at `from` is not. `today`, `week`, `next`, `agenda` and
+  `search` all use the same rule through `Db::queryEvents`.
+- Text is a literal `instr` over `title + ' ' + notes`, ASCII case-insensitive.
+  `%` and `_` are ordinary characters, and `"daily sync"` is one phrase (two
+  spaces do not match).
+- Importance/urgency bounds are inclusive; filters compose with text, type,
+  visibility, sort and pagination.
+- Visibility defaults: `list` and `search` see hidden rows; `today`, `week`,
+  `next` and `agenda` show visible rows only. `--visible`,
+  `--hidden-only` and `--include-hidden` are mutually exclusive overrides.
+- Sorts are deterministic: start ascending/descending, importance (ties broken
+  by urgency), urgency, updated, and title (`COLLATE NOCASE`). `--limit`/
+  `--offset` apply after ordering; `--limit 0` returns no rows.
+- `next` is the first event with `end_utc > now`, so an ongoing event wins;
+  limit 1 unless `--limit` widens it, and sort is fixed to start-ascending.
+
+The e2e test captures stdout for the query verbs, so a filter that never
+reaches core (or a hidden-policy regression) fails there too, not only in
+`query_test`.
+
 ### CLI rendering
 
 `format_test` asserts the actual bytes for every format, so the user-visible
@@ -122,7 +149,7 @@ DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 20 suites, not 11. The CLI's
+That is why the parent currently reports 21 suites, not 11. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

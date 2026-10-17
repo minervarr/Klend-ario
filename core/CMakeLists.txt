@@ -21,6 +21,7 @@ add_library(klend_ario_core STATIC
     src/schema.cc
     src/event.cc
     src/timeexpr.cc
+    src/query.cc
     src/alarm.cc
     src/sync.cc
     src/holidays.cc)
@@ -63,7 +64,15 @@ klend_ario_add_test(timeexpr_test
     INCLUDES include)
 
 klend_ario_add_test(schema_test
-    SOURCES  tests/schema_test.cc src/db.cc src/schema.cc src/event.cc
+    SOURCES  tests/schema_test.cc src/db.cc src/schema.cc src/event.cc src/query.cc
+    INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
+    LIBS     sqlite3mc arc_util)
+
+# query_test — the filtering/ordering/pagination contract over a real in-memory
+# database. It links the storage sources plus the query value's name parser; no
+# CLI and no clock.
+klend_ario_add_test(query_test
+    SOURCES  tests/query_test.cc src/db.cc src/schema.cc src/event.cc src/query.cc
     INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
     LIBS     sqlite3mc arc_util)
 

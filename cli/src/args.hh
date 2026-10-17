@@ -18,7 +18,22 @@
 
 namespace klend_ario::cli {
 
-enum class Verb { None, Help, Add, Edit, Duplicate, List, Show, Remove, Holidays };
+enum class Verb {
+    None,
+    Help,
+    Add,
+    Edit,
+    Duplicate,
+    List,
+    Today,
+    Week,
+    Next,
+    Agenda,
+    Search,
+    Show,
+    Remove,
+    Holidays,
+};
 
 struct Args {
     Verb verb = Verb::None;
@@ -56,9 +71,34 @@ struct Args {
     std::string shift; // duration expression for edit/duplicate
     bool shiftGiven = false;
 
-    // list
-    std::string from; // instant expression, verbatim (empty => today)
-    std::string to;   // instant expression, verbatim (empty => from + 7 days)
+    // list / today / week / next / agenda / search
+    std::string from; // instant expression, verbatim (empty => the verb's default)
+    bool fromGiven = false;
+    std::string to; // instant expression, verbatim (empty => the verb's default)
+    bool toGiven = false;
+    std::string search; // literal substring of title or notes
+    bool searchGiven = false;
+    std::string sort = "start";
+    bool sortGiven = false;
+    int limit = -1; // -1 = unlimited; 0 is a valid "no rows"
+    bool limitGiven = false;
+    int offset = 0;
+    bool offsetGiven = false;
+    int minImportance = 0;
+    bool minImportanceGiven = false;
+    int maxImportance = 100;
+    bool maxImportanceGiven = false;
+    int minUrgency = 0;
+    bool minUrgencyGiven = false;
+    int maxUrgency = 100;
+    bool maxUrgencyGiven = false;
+    // Visibility filters. They are mutually exclusive; the verb picks the
+    // default (views visible-only, list/search everything).
+    bool visibleOnly = false;
+    bool hiddenOnly = false;
+    bool includeHidden = false;
+    int days = 7; // agenda's window
+    bool daysGiven = false;
 
     // holidays
     std::string country = "PE";

@@ -96,6 +96,10 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI output | **text/table/json/csv/tsv**; rendering is pure (`cli/src/format.cc`), so the bytes are tested. `--json` remains an alias for `--format json` |
 | CLI time grammar | user-facing instants/durations are **pure core** (`klend_ario/timeexpr.hh`), UTC-only, resolved against an explicit `now` |
 | CLI edits | `edit <id>` changes **only supplied flags** (`*Given` in `Args`); moving `--start` preserves duration unless `--end`/`--duration` says otherwise |
+| CLI queries | Filters/sort/pagination are a core value (`klend_ario::EventQuery`) executed by `Db::queryEvents`; `listEvents` delegates. User text is bound; ORDER BY is a fixed whitelist. No in-memory filtering in a frontend |
+| CLI search | Literal ASCII case-insensitive substring of **title + notes**. `%`/`_` are ordinary characters; a multi-word query is a phrase. No FTS until a benchmark asks for it |
+| CLI hidden | `hidden` is a **weekly-view** flag, not deletion. `list`/`search` see hidden rows; `today`/`week`/`next`/`agenda` default to visible only. `--visible`/`--hidden-only`/`--include-hidden` override |
+| CLI next | The first event with `end_utc > now`, so an event already underway counts. Visible only by default; limit 1, widened by `--limit` |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
@@ -172,6 +176,21 @@ These are truths this workspace already paid for. Do not relearn them.
   `+90m` live in core (`timeexpr`) with `now` as a parameter, not in the CLI and
   not behind a clock call. That is what makes leap days, pre-epoch floors, and
   overflow assertable without a flaky test or a timezone database.
+- **A filter is a query, not a post-processing loop.** Putting `EventQuery` in
+  core and building one prepared statement means the CLI, MCP and the weekly
+  view cannot disagree about what “overlapping” or “hidden” means; `listEvents`
+  delegates rather than keeping a second SQL copy. User text is bound, and
+  ORDER BY is selected from a whitelist — a search term can never change the
+  shape of the statement.
+- **“Hidden” is not “deleted”, and not “irrelevant”.** It is a property of the
+  weekly view (sleep blocks). Data verbs (`list`, `search`) must still see those
+  rows so they can be edited or unhidden; view verbs (`today`, `week`, `next`,
+  `agenda`) filter them by default. Confusing the two either hides data with no
+  way back or floods the view with sleep blocks.
+- **“Next” follows the overlap rule.** A half-open range starting at `now`
+  includes an event whose `end_utc > now`, so `next` does too. Defining it as
+  `start_utc > now` would make it the only query that skips the meeting you are
+  currently in.
 - **Migrations are additive and refused in the wrong direction.** The schema
   version lives in `meta.schema_version` and is checked on every open. Steps run
   upward only, in order. A database written by a *newer* build is **refused**

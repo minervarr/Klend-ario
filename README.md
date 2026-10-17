@@ -46,7 +46,12 @@ ctest --test-dir build --output-on-failure
 ./build/cli/klend_ario_cli --help
 ./build/cli/klend_ario_cli help add
 ./build/cli/klend_ario_cli add "Standup" --start today+9h --duration 30m
-./build/cli/klend_ario_cli list --from today --to week --format table
+./build/cli/klend_ario_cli today --format table
+./build/cli/klend_ario_cli week
+./build/cli/klend_ario_cli next
+./build/cli/klend_ario_cli agenda --days 3
+./build/cli/klend_ario_cli search "standup"
+./build/cli/klend_ario_cli list --from today --to today+7d --min-importance 70
 ./build/cli/klend_ario_cli edit 1 --shift 1h
 ./build/cli/klend_ario_cli holidays --year 2026 --format csv
 ```
@@ -55,6 +60,13 @@ Instants are UTC. Absolute ISO-8601 (`2026-10-16T09:00:00Z`), date-only
 (`2026-10-16`), relative words (`now`, `today`, `tomorrow`, `week`,
 `sunday..saturday`) and offsets (`today+2h`, `+90m`) all work. `--format` is
 `text`, `table`, `json`, `csv`, or `tsv`; `--json` remains an alias.
+
+`today`, `week`, `next` and `agenda` show visible rows by default (hidden sleep
+blocks stay out of the view); `list` and `search` include them so they can be
+found and edited. Override with `--visible`, `--hidden-only`, or
+`--include-hidden`. Search is a literal, case-insensitive substring of title and
+notes — `%` and `_` are ordinary characters, and `next` includes an event that
+is already underway.
 
 ## Layout
 
