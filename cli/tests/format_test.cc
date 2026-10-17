@@ -246,6 +246,10 @@ void testStatsAndDiagnosticsFormats() {
     assert(diagnosticsCsv.rfind("status,check,detail\n", 0) == 0);
     assert(diagnosticsCsv.find("warn,modified,meta.modified_utc is missing\n") !=
            std::string::npos);
+
+    assert(formatImportSummary(ImportSummary{7, 7, false}) == "imported 7 events\n");
+    assert(formatImportSummary(ImportSummary{7, 0, true}) ==
+           "parsed 7 events (dry run)\n");
 }
 
 } // namespace

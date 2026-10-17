@@ -672,6 +672,141 @@ int main() {
     assert(run({"completion", "tcsh"}) == kExitUsage);
     assert(run({"completion", "bash", "zsh"}) == kExitUsage);
 
+    // ---------------------------------------------------------------------
+    // Stage 6b: import from csv/jsonl.
+    // ---------------------------------------------------------------------
+#ifndef _WIN32
+    const char *importDb = "klend_e2e_import.db";
+    const char *importJsonDb = "klend_e2e_import_json.db";
+    const char *importIdsDb = "klend_e2e_import_ids.db";
+    const char *replaceDb = "klend_e2e_replace.db";
+    const char *dryDb = "klend_e2e_dry.db";
+    const char *badDb = "klend_e2e_bad_import.db";
+    const char *csvFile = "klend_e2e_import.csv";
+    const char *jsonlFile = "klend_e2e_import.jsonl";
+    const char *badFile = "klend_e2e_bad.csv";
+    const char *emptyFile = "klend_e2e_empty.csv";
+    std::remove(importDb);
+    std::remove(importJsonDb);
+    std::remove(importIdsDb);
+    std::remove(replaceDb);
+    std::remove(dryDb);
+    std::remove(badDb);
+
+    {
+        const Capture csv = runCaptured({"export", "--db", intelDb, "--format", "csv"});
+        assert(csv.code == kExitOk);
+        std::ofstream out(csvFile, std::ios::binary);
+        out << csv.output;
+
+        const Capture jsonl = runCaptured({"export", "--db", intelDb, "--json"});
+        assert(jsonl.code == kExitOk);
+        std::ofstream outJson(jsonlFile, std::ios::binary);
+        outJson << jsonl.output;
+    }
+    {
+        const Capture imported = runCaptured({"import", "--db", importDb, csvFile});
+        assert(imported.code == kExitOk);
+        assert(imported.output == "imported 7 events\n");
+
+        auto db = klend_ario::Db::open(importDb);
+        assert(db.ok());
+        auto all = db.value().queryEvents(klend_ario::EventQuery{});
+        assert(all.ok());
+        assert(all.value().size() == 7);
+        assert(all.value()[0].title == "A");
+        assert(all.value()[0].createdUtc != 0);
+        bool sawHidden = false;
+        for (const klend_ario::Event &event : all.value()) {
+            if (event.title == "Sleepy") {
+                sawHidden = event.hidden;
+            }
+        }
+        assert(sawHidden);
+    }
+    {
+        const Capture imported =
+            runCaptured({"import", "--db", importJsonDb, "--format", "jsonl", jsonlFile});
+        assert(imported.code == kExitOk);
+        assert(imported.output == "imported 7 events\n");
+        auto db = klend_ario::Db::open(importJsonDb);
+        assert(db.ok());
+        auto all = db.value().queryEvents(klend_ario::EventQuery{});
+        assert(all.value().size() == 7);
+    }
+    {
+        // Replace is a restore, not an append: seed a row, then import all 7.
+        assert(run({"add", "--db", replaceDb, "Seed", "--start", "2026-10-16T00:00:00Z",
+                    "--end", "2026-10-16T01:00:00Z"}) == kExitOk);
+        const Capture replaced =
+            runCaptured({"import", "--db", replaceDb, csvFile, "--replace"});
+        assert(replaced.code == kExitOk);
+        assert(replaced.output == "imported 7 events\n");
+        auto db = klend_ario::Db::open(replaceDb);
+        assert(db.ok());
+        auto all = db.value().queryEvents(klend_ario::EventQuery{});
+        assert(all.value().size() == 7);
+        for (const klend_ario::Event &event : all.value()) {
+            assert(event.title != "Seed");
+        }
+    }
+    {
+        // Preserve ids is explicit; the export already carries 1..7.
+        const Capture imported =
+            runCaptured({"import", "--db", importIdsDb, csvFile, "--preserve-ids"});
+        assert(imported.code == kExitOk);
+        auto db = klend_ario::Db::open(importIdsDb);
+        assert(db.ok());
+        auto all = db.value().queryEvents(klend_ario::EventQuery{});
+        assert(all.value().size() == 7);
+        std::vector<bool> seen(8, false);
+        for (const klend_ario::Event &event : all.value()) {
+            assert(event.id >= 1 && event.id <= 7);
+            seen[static_cast<size_t>(event.id)] = true;
+        }
+        for (size_t id = 1; id <= 7; ++id) {
+            assert(seen[id]);
+        }
+    }
+    {
+        // Dry run parses and reports, but does not create the database file.
+        const Capture dry = runCaptured({"import", "--db", dryDb, csvFile, "--dry-run"});
+        assert(dry.code == kExitOk);
+        assert(dry.output == "parsed 7 events (dry run)\n");
+        std::ifstream check(dryDb);
+        assert(!check.good());
+    }
+    {
+        {
+            std::ofstream out(badFile);
+            out << "title,start,end\nBad,not-a-date,2026-10-16T10:00:00Z\n";
+        }
+        const Capture bad = runCaptured({"import", "--db", badDb, badFile});
+        assert(bad.code == kExitError);
+        assert(bad.output.empty());
+        std::ifstream check(badDb);
+        assert(!check.good());
+
+        std::ofstream empty(emptyFile);
+        assert(run({"import", "--db", badDb, emptyFile}) == kExitError);
+    }
+    std::remove(importDb);
+    std::remove(importJsonDb);
+    std::remove(importIdsDb);
+    std::remove(replaceDb);
+    std::remove(dryDb);
+    std::remove(badDb);
+    std::remove(csvFile);
+    std::remove(jsonlFile);
+    std::remove(badFile);
+    std::remove(emptyFile);
+#endif
+
+    assert(run({"import"}) == kExitUsage);
+    assert(run({"import", "no_such_file.csv"}) == kExitError);
+    assert(run({"import", "no_such_file.csv", "--format", "ics"}) == kExitUsage);
+    assert(run({"list", "--replace"}) == kExitUsage);
+
     std::remove(intelDb);
 
     // ---------------------------------------------------------------------

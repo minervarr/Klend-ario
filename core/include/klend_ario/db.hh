@@ -48,6 +48,13 @@ public:
     // created_utc/updated_utc with utcNowSeconds() when they are 0.
     arc::Result<long long> insertEvent(Event e);
 
+    // Inserts every event in ONE transaction. With `replace`, deletes all rows
+    // first; an error rolls the delete back too. With `preserveIds`, each event
+    // id is written as given (and must be > 0); otherwise the database assigns
+    // fresh ids. created/updated are preserved when non-zero, else set to now.
+    arc::Result<long long> importEvents(const std::vector<Event> &events, bool replace,
+                                        bool preserveIds);
+
     // Updates the event named by `e.id`, bumping updated_utc to now and leaving
     // created_utc as stored. Fails when no row has that id, so a stale edit is
     // reported rather than silently lost.

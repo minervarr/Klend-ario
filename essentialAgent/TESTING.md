@@ -78,10 +78,11 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Summary counts (`computeStats`) | `core/tests/stats_test.cc` | `src/stats.cc src/conflict.cc src/event.cc` | none |
 | Doctor checks (`diagnose`, `integrityCheck`) | `core/tests/diagnostics_test.cc` | `src/diagnostics.cc src/db.cc src/schema.cc src/query.cc src/conflict.cc src/sync.cc` + `sqlite3` | in-memory DB |
 | Interchange export (`exportEvents`) | `core/tests/export_test.cc` | `src/export.cc src/event.cc` | none |
+| Interchange import (`parseImportedEvents`, `Db::importEvents`) | `core/tests/import_test.cc` | `src/import.cc src/export.cc src/db.cc src/schema.cc src/event.cc src/query.cc` + `sqlite3` | in-memory DB |
 | Shell completion scripts | `cli/tests/completion_test.cc` | `completion.cc` only | none |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
-| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`export`/`completion`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`/`completion`) |
+| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`export`/`import`/`completion`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`/`completion`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 
 ### Time and day model
@@ -195,6 +196,19 @@ doctor over an in-memory database:
 binary, so the list is static; if a verb is added, update `completion.cc` and
 the test together.
 
+`import_test` pins the parser and the transaction:
+
+- CSV is RFC 4180: quoted commas/quotes/newlines, reordered header by name,
+  BOM/CRLF, and strict errors for a bad quote, missing/unknown column, wrong
+  field count, bad instant/type/range, or empty input.
+- JSONL is one flat object per line; escapes decode, unknown scalar keys are
+  ignored, and nested values, duplicate keys and wrong types fail with a line.
+- Export → parse round-trips every field for both formats.
+- `Db::importEvents` appends with fresh ids by default, replaces in one
+  transaction, preserves ids only when asked, and rolls a collision back.
+- The CLI parses before opening the database, so `--dry-run` and a bad file
+  leave no target file behind; an empty file is an error.
+
 ### CLI rendering
 
 `format_test` asserts the actual bytes for every format, so the user-visible
@@ -213,7 +227,7 @@ DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 27 suites, not 11. The CLI's
+That is why the parent currently reports 28 suites, not 11. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

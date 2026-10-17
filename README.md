@@ -58,6 +58,8 @@ ctest --test-dir build --output-on-failure
 ./build/cli/klend_ario_cli doctor
 ./build/cli/klend_ario_cli export --format csv > backup.csv
 ./build/cli/klend_ario_cli export --format ics > calendar.ics
+./build/cli/klend_ario_cli import backup.csv
+./build/cli/klend_ario_cli import backup.csv --replace --preserve-ids
 ./build/cli/klend_ario_cli completion bash
 ./build/cli/klend_ario_cli list --from today --to today+7d --min-importance 70
 ./build/cli/klend_ario_cli edit 1 --shift 1h
@@ -88,8 +90,12 @@ weekly view does not cancel its wake-up.
 
 `export` writes stdout, all rows and all time by default. Its `--format` is
 `csv`, `jsonl`, or `ics`: CSV/JSONL carry every stored field, while ICS is
-one-way interoperability (UTC events, a `VALARM` for the offset). `completion
-bash|zsh|fish` prints a script for your shell.
+one-way interoperability (UTC events, a `VALARM` for the offset). `import`
+reads the same CSV/JSONL shape and appends with fresh ids by default;
+`--replace` restores in one transaction, `--preserve-ids` keeps ids, and
+`--dry-run` only validates. The whole file is parsed before anything is
+written, and empty input is rejected. `completion bash|zsh|fish` prints a
+script for your shell.
 
 ## Layout
 

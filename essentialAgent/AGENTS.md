@@ -145,6 +145,10 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
 - **Export is a separate contract from display.** `core/export` owns the
   CSV/JSONL/ICS bytes; do not reuse the CLI's compact `list` renderer. `--format`
   is verb-scoped, and ICS is one-way: it is an exporter, not a parser.
+- **Import parses before it writes.** `parseImportedEvents` validates the whole
+  document; `Db::importEvents` applies it in one transaction. Empty input is an
+  error, append is the default, and `--replace`/`--preserve-ids` are explicit so
+  a merge never silently becomes a restore.
 - **A partial edit changes only supplied flags.** Carry a `*Given` flag in
   `Args` for every editable field; a default value cannot mean "leave alone".
 - Every comment that explains a *surprising* choice is worth its weight. Every

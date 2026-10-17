@@ -907,6 +907,13 @@ std::string formatDiagnostics(const Diagnostics &diagnostics, OutputFormat forma
     return out;
 }
 
+std::string formatImportSummary(const ImportSummary &summary) {
+    if (summary.dryRun) {
+        return "parsed " + std::to_string(summary.parsed) + " events (dry run)\n";
+    }
+    return "imported " + std::to_string(summary.inserted) + " events\n";
+}
+
 std::string formatId(long long id, OutputFormat format) {
     if (format == OutputFormat::Json) {
         return "{\"id\":" + std::to_string(id) + "}\n";

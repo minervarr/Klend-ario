@@ -123,6 +123,56 @@ Event readEvent(sqlite3_stmt *stmt) {
     return e;
 }
 
+// One row insert, shared by `insertEvent` and `importEvents`. `preserveId` is
+// explicit: a normal insert must let SQLite assign the id, while a restore keeps
+// the id that notes/links may refer to. Timestamps are filled here so both
+// callers agree on the "0 means now" convention.
+arc::Result<long long> insertRow(sqlite3 *db, Event e, long long now, bool preserveId) {
+    if (preserveId && e.id <= 0) {
+        return arc::Error{arc::ErrorKind::Other, 0,
+                          "preserve ids requires a positive id on every event"};
+    }
+    if (e.createdUtc == 0) {
+        e.createdUtc = now;
+    }
+    if (e.updatedUtc == 0) {
+        e.updatedUtc = now;
+    }
+
+    static const char *kInsert =
+        "INSERT INTO events(title, start_utc, end_utc, type, importance, urgency, "
+        "alarm_offset, hidden, notes, created_utc, updated_utc) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    static const char *kInsertWithId =
+        "INSERT INTO events(id, title, start_utc, end_utc, type, importance, urgency, "
+        "alarm_offset, hidden, notes, created_utc, updated_utc) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    Statement stmt;
+    if (auto prepared = stmt.prepare(db, preserveId ? kInsertWithId : kInsert); !prepared) {
+        return prepared.error();
+    }
+    int index = 1;
+    if (preserveId) {
+        stmt.bindInt(index++, e.id);
+    }
+    stmt.bindText(index++, e.title);
+    stmt.bindInt(index++, e.startUtc);
+    stmt.bindInt(index++, e.endUtc);
+    stmt.bindText(index++, eventTypeName(e.type));
+    stmt.bindInt(index++, e.importance);
+    stmt.bindInt(index++, e.urgency);
+    stmt.bindInt(index++, e.alarmOffset);
+    stmt.bindBool(index++, e.hidden);
+    stmt.bindText(index++, e.notes);
+    stmt.bindInt(index++, e.createdUtc);
+    stmt.bindInt(index, e.updatedUtc);
+    if (auto done = stmt.step(); !done) {
+        return done.error();
+    }
+    return preserveId ? e.id : sqlite3_last_insert_rowid(db);
+}
+
 } // namespace
 
 Db::~Db() {
@@ -233,41 +283,46 @@ arc::Result<void> Db::migrate() {
 }
 
 arc::Result<long long> Db::insertEvent(Event e) {
-    const long long now = utcNowSeconds();
-    if (e.createdUtc == 0) {
-        e.createdUtc = now;
+    auto inserted = insertRow(db_, e, utcNowSeconds(), false);
+    if (!inserted) {
+        return inserted.error();
     }
-    if (e.updatedUtc == 0) {
-        e.updatedUtc = now;
-    }
-
-    static const char *kInsert =
-        "INSERT INTO events(title, start_utc, end_utc, type, importance, urgency, "
-        "alarm_offset, hidden, notes, created_utc, updated_utc) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    Statement stmt;
-    if (auto prepared = stmt.prepare(db_, kInsert); !prepared) {
-        return prepared.error();
-    }
-    stmt.bindText(1, e.title);
-    stmt.bindInt(2, e.startUtc);
-    stmt.bindInt(3, e.endUtc);
-    stmt.bindText(4, eventTypeName(e.type));
-    stmt.bindInt(5, e.importance);
-    stmt.bindInt(6, e.urgency);
-    stmt.bindInt(7, e.alarmOffset);
-    stmt.bindBool(8, e.hidden);
-    stmt.bindText(9, e.notes);
-    stmt.bindInt(10, e.createdUtc);
-    stmt.bindInt(11, e.updatedUtc);
-    if (auto done = stmt.step(); !done) {
-        return done.error();
-    }
-    const long long id = sqlite3_last_insert_rowid(db_);
     if (auto touched = touchModified(); !touched) {
         return touched.error();
     }
-    return id;
+    return inserted.value();
+}
+
+arc::Result<long long> Db::importEvents(const std::vector<Event> &events, bool replace,
+                                        bool preserveIds) {
+    if (auto begun = exec(db_, "BEGIN IMMEDIATE"); !begun) {
+        return begun.error();
+    }
+    const auto rollback = [this]() { (void)exec(db_, "ROLLBACK"); };
+
+    if (replace) {
+        if (auto deleted = exec(db_, "DELETE FROM events"); !deleted) {
+            rollback();
+            return deleted.error();
+        }
+    }
+
+    const long long now = utcNowSeconds();
+    for (const Event &event : events) {
+        if (auto inserted = insertRow(db_, event, now, preserveIds); !inserted) {
+            rollback();
+            return inserted.error();
+        }
+    }
+    if (auto touched = touchModified(); !touched) {
+        rollback();
+        return touched.error();
+    }
+    if (auto committed = exec(db_, "COMMIT"); !committed) {
+        rollback();
+        return committed.error();
+    }
+    return static_cast<long long>(events.size());
 }
 
 arc::Result<void> Db::updateEvent(const Event &e) {

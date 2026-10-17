@@ -81,17 +81,18 @@ work is staged so each layer is useful and tested on its own; logic stays in
         health report (`diagnose`): SQLite integrity, schema version,
         `modified_utc`, Syncthing copies, interval sanity. Doctor exits 1 on
         warn/fail.
-- [ ] **Stage 6 — portability.**
+- [x] **Stage 6 — portability.**
   - [x] **6a — export and completion.** Pure `core/export` for CSV, JSONL and
         one-way ICS (UTC VEVENTs, `VALARM`, folding), plus `completion
         bash|zsh|fish`. Export is all-time/all-rows by default and writes to
         stdout.
-  - [ ] **6b — import.** CSV/JSONL parsing and a transactional
+  - [x] **6b — import.** CSV/JSONL parsing and a transactional
         `Db::importEvents`: append by default, `--replace`, `--dry-run`, and
-        optional id preservation.
+        optional id preservation. Parse-before-write means a bad row cannot
+        leave a partial import.
 
-Stage 6b is planned, not built. GUI Phase 4 resumes after these unless the
-order changes again — see the status log.
+Stage 6 is complete. GUI Phase 4 resumes unless the order changes again — see
+the status log.
 
 ---
 
@@ -179,7 +180,7 @@ ctest --test-dir build --output-on-failure      # all pass
 - [x] `core/tests/holidays_test.cc` asserts a known 2026 Peru calendar,
       case/trimmed lookup, the *día no laborable* negative, and the
       unknown-country error.
-- [x] The child's seven suites run through the parent's CTest (27 suites
+- [x] The child's seven suites run through the parent's CTest (28 suites
       total), so a parent `ctest` also protects the library.
 - [ ] Android NDK build of the child — open; no NDK/SDK in this environment.
 
@@ -188,6 +189,14 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **CLI hardening, Stage 6b — import (2026-10-17).** Added pure
+  `core/import` CSV/JSONL parsers (RFC 4180, quoted newlines, reordered headers,
+  BOM; flat JSONL with escapes) and transactional `Db::importEvents`. Append is
+  the default with fresh ids; `--replace`, `--preserve-ids` and `--dry-run` are
+  explicit. The whole file is parsed before the database is opened, and empty
+  input is an error, so a truncated restore cannot wipe data. New `import_test`
+  plus e2e round-trips bring the parent to 28 suites. No submodule change.
 
 - **CLI hardening, Stage 6a — export/completion (2026-10-17).** Added pure
   `core/export` for CSV, JSONL and ICS. CSV/JSONL carry every stored field; ICS

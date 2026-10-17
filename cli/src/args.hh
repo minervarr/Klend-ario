@@ -36,6 +36,7 @@ enum class Verb {
     Stats,
     Doctor,
     Export,
+    Import,
     Completion,
     Show,
     Remove,
@@ -112,6 +113,12 @@ struct Args {
     // free
     std::string minDuration = "30m"; // duration expression, verbatim
     bool minDurationGiven = false;
+
+    // import
+    std::string importPath; // "-" means stdin
+    bool replace = false;
+    bool preserveIds = false;
+    bool dryRun = false;
 
     // holidays
     std::string country = "PE";

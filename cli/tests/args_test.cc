@@ -38,6 +38,7 @@ void testVerbs() {
     assert(parse({"stats"}).verb == Verb::Stats);
     assert(parse({"doctor"}).verb == Verb::Doctor);
     assert(parse({"export"}).verb == Verb::Export);
+    assert(parse({"import"}).verb == Verb::Import);
     assert(parse({"completion"}).verb == Verb::Completion);
     assert(parse({"show"}).verb == Verb::Show);
     assert(parse({"rm"}).verb == Verb::Remove);
@@ -237,6 +238,29 @@ void testExportAndCompletionFlags() {
     assert(!parse({"completion", "bash", "zsh"}).error.empty());
 }
 
+void testImportFlags() {
+    const Args plain = parse({"import", "backup.csv"});
+    assert(plain.error.empty());
+    assert(plain.verb == Verb::Import);
+    assert(plain.importPath == "backup.csv");
+    assert(!plain.replace && !plain.preserveIds && !plain.dryRun);
+
+    const Args full = parse({"import", "-", "--format", "jsonl", "--replace", "--preserve-ids",
+                             "--dry-run", "--json"});
+    assert(full.error.empty());
+    assert(full.importPath == "-");
+    assert(full.formatGiven && full.format == "jsonl");
+    assert(full.replace && full.preserveIds && full.dryRun);
+    assert(full.json);
+
+    assert(parse({"import"}).importPath.empty());
+    assert(!parse({"import", "a.csv", "b.csv"}).error.empty());
+    assert(!parse({"list", "--replace"}).error.empty());
+    assert(!parse({"list", "--preserve-ids"}).error.empty());
+    assert(!parse({"list", "--dry-run"}).error.empty());
+    assert(!parse({"import", "a.csv", "--from", "today"}).error.empty());
+}
+
 void testStatsAndDoctorFlags() {
     const Args stats = parse({"stats", "--from", "2026-10-01", "--to", "2026-11-01", "--type",
                               "sleep", "--visible"});
@@ -421,6 +445,7 @@ int main() {
     testQueryOnlyFlagsRejectedOnMutation();
     testIntelligenceFlags();
     testExportAndCompletionFlags();
+    testImportFlags();
     testStatsAndDoctorFlags();
     testHolidaysVerb();
     testUsageErrors();

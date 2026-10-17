@@ -106,6 +106,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI stats | Default all time / all rows; `--from`/`--to`/`--type`/visibility narrow the set. `scheduled_seconds` is a **sum**, so overlaps double-count; `conflict_pairs` says how many overlaps exist. Alarm rows count in totals but not conflicts |
 | CLI doctor | Read-only. Checks integrity, schema version, `modified_utc`, Syncthing copies and interval sanity; exit `1` on any warn/fail. It never migrates, fixes, or deletes |
 | CLI export | Data access, not a view: all time/all rows by default, hidden included, stdout. `--format` is verb-scoped: `csv|jsonl|ics` (default csv). CSV/JSONL are the lossless interchange shapes; ICS is one-way |
+| CLI import | Parse the whole file first, then write in one transaction. Append by default with fresh ids; `--replace` and `--preserve-ids` are explicit. Empty input is an error; `--dry-run` never opens the database |
 | CLI completion | `completion bash|zsh|fish` prints a static script. The CLI is one binary, so completion must work from a fresh checkout without an install step |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
@@ -224,6 +225,16 @@ These are truths this workspace already paid for. Do not relearn them.
   and RFC 5545 escaping/folding. Importing arbitrary ICS (timezones, recurrence,
   attendees) is a different, much larger problem; do not pretend the exporter
   is a parser.
+- **Parse before write, and reject empty input.** Import validates the entire
+  document before opening the database. A bad row cannot leave a half-import,
+  and a truncated file cannot `--replace` a calendar with nothing. The empty
+  check is deliberately an error, not "zero events".
+- **Append is safe; replace is explicit.** Import defaults to fresh ids so two
+  calendars can be merged. `--replace` is a restore, `--preserve-ids` keeps the
+  ids notes/links will use; a collision rolls the whole transaction back.
+- **JSONL import is flat on purpose.** The parser reads one object per line with
+  scalar values and ignores unknown scalar keys, but rejects nested values. A
+  general JSON tree is not needed to restore our own export.
 - **Completion is generated, not installed.** `completion bash|zsh|fish` prints
   a static script to stdout so a fresh checkout works without a setup step. The
   verb list is duplicated by necessity; `completion_test` pins the surface.

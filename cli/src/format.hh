@@ -65,6 +65,16 @@ std::string formatStats(const CalendarStats &stats, OutputFormat format,
 std::string formatDiagnostics(const Diagnostics &diagnostics, OutputFormat format,
                               const FormatOptions &options);
 
+// Import has one output shape: a short confirmation. Its --format selects the
+// INPUT format (csv/jsonl), so there is no second format dimension to choose.
+struct ImportSummary {
+    long long parsed = 0;
+    long long inserted = 0;
+    bool dryRun = false;
+};
+
+std::string formatImportSummary(const ImportSummary &summary);
+
 // The value `add`, `edit` and `duplicate` print: a bare id, or {"id":N}.
 std::string formatId(long long id, OutputFormat format);
 

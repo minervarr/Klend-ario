@@ -68,6 +68,8 @@ const char *verbName(Verb verb) {
         return "doctor";
     case Verb::Export:
         return "export";
+    case Verb::Import:
+        return "import";
     case Verb::Completion:
         return "completion";
     case Verb::Show:
@@ -161,6 +163,8 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             a.verb = Verb::Doctor;
         } else if (verb == "export") {
             a.verb = Verb::Export;
+        } else if (verb == "import") {
+            a.verb = Verb::Import;
         } else if (verb == "completion") {
             a.verb = Verb::Completion;
         } else if (verb == "show") {
@@ -385,6 +389,24 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
                 return a;
             }
             a.minDurationGiven = true;
+        } else if (token == "--replace") {
+            if (a.verb != Verb::Import) {
+                a.error = "--replace is only valid for import";
+                return a;
+            }
+            a.replace = true;
+        } else if (token == "--preserve-ids") {
+            if (a.verb != Verb::Import) {
+                a.error = "--preserve-ids is only valid for import";
+                return a;
+            }
+            a.preserveIds = true;
+        } else if (token == "--dry-run") {
+            if (a.verb != Verb::Import) {
+                a.error = "--dry-run is only valid for import";
+                return a;
+            }
+            a.dryRun = true;
         } else if (token == "--min-importance") {
             if (!queryOnly("--min-importance")) {
                 return a;
@@ -550,6 +572,12 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.title = std::string(token);
             a.titleGiven = true;
+        } else if (a.verb == Verb::Import) {
+            if (!a.importPath.empty()) {
+                a.error = "import takes exactly one file path (or - for stdin)";
+                return a;
+            }
+            a.importPath = std::string(token);
         } else if (a.verb == Verb::Completion) {
             if (!a.completionShell.empty()) {
                 a.error = "completion takes exactly one shell name (bash|zsh|fish)";
@@ -586,6 +614,7 @@ std::string usage() {
            "  stats      summarize a set of events\n"
            "  doctor     check the database's health (read-only)\n"
            "  export     write events as csv, jsonl or ics\n"
+           "  import     read events from csv or jsonl\n"
            "  completion print a shell completion script\n"
            "  show       show one event by id\n"
            "  rm         delete one event by id\n"
@@ -619,13 +648,20 @@ std::string usage() {
            "  --visible | --hidden-only | --include-hidden\n"
            "  all time and all rows by default; writes to stdout\n"
            "\n"
+           "import options (import FILE):\n"
+           "  --format FMT       csv|jsonl (default csv)\n"
+           "  --replace          clear the table first, in the same transaction\n"
+           "  --preserve-ids     keep the ids from the file\n"
+           "  --dry-run          parse and validate, write nothing\n"
+           "  FILE may be - to read stdin; empty input is an error\n"
+           "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"
            "  --key-file PATH    read the database passphrase from this file\n"
            "                     (else $KLEND_ARIO_KEY; else plaintext)\n"
            "  --format FMT       text|table|json|csv|tsv (default text;\n"
-           "                     export uses csv|jsonl|ics)\n"
-           "  --json             same as --format json (jsonl for export)\n"
+           "                     export uses csv|jsonl|ics, import csv|jsonl)\n"
+           "  --json             same as --format json (jsonl for export/import)\n"
            "  --no-header        omit the header row of csv/tsv/table\n"
            "  -h, --help         this text\n"
            "\n"
@@ -776,6 +812,16 @@ std::string usageFor(std::string_view topic) {
                "  Writes to stdout. CSV and JSONL are lossless (all fields); ICS is\n"
                "  one-way interoperability, with a VALARM for the offset. Defaults to\n"
                "  all time, all rows and csv. Use `> file` to save it.\n";
+    }
+    if (topic == "import") {
+        return "usage: klend_ario_cli import FILE [--format csv|jsonl] [--replace]\n"
+               "                              [--preserve-ids] [--dry-run]\n"
+               "\n"
+               "  Parses the whole file before writing anything; a bad row rejects\n"
+               "  the file. Append is the default, with fresh local ids. --replace\n"
+               "  clears and imports in one transaction; --preserve-ids keeps the\n"
+               "  file's ids and fails on a collision. FILE may be - for stdin.\n"
+               "  Empty input is an error, so a truncated restore cannot wipe data.\n";
     }
     if (topic == "completion") {
         return "usage: klend_ario_cli completion bash|zsh|fish\n"

@@ -27,6 +27,7 @@ add_library(klend_ario_core STATIC
     src/stats.cc
     src/diagnostics.cc
     src/export.cc
+    src/import.cc
     src/alarm.cc
     src/sync.cc
     src/holidays.cc)
@@ -110,6 +111,14 @@ klend_ario_add_test(diagnostics_test
 klend_ario_add_test(export_test
     SOURCES  tests/export_test.cc src/export.cc src/event.cc
     INCLUDES include)
+
+# import_test — the parsers round-trip through the exporter, then the
+# transaction/replace/preserve-id paths run against an in-memory database.
+klend_ario_add_test(import_test
+    SOURCES  tests/import_test.cc src/import.cc src/export.cc src/db.cc src/schema.cc
+             src/event.cc src/query.cc
+    INCLUDES include ${CMAKE_CURRENT_BINARY_DIR}/generated
+    LIBS     sqlite3mc arc_util)
 
 # sync_test — the pure half of the Syncthing conflict policy. Links sync.cc and
 # arc_fs (for the directory listing) and opens nothing.

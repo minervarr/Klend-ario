@@ -84,6 +84,9 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
 - **Export is not display.** `core/export` owns CSV/JSONL/ICS as a stable
   interchange contract; `cli/format.cc` stays the compact view renderer. ICS is
   one-way; do not grow an ICS parser out of the exporter.
+- **Import is all-or-nothing.** Parse the whole document before opening the DB,
+  then use `Db::importEvents` for one transaction. Empty input is an error;
+  append is the default, and replace/preserve-ids are explicit.
 - **No speculative storage rewrite.** SQLite stays until a benchmark proves a
   JSON store faster on the real operations; encryption is not a blocker.
 - **Captured ≠ built.** Notes, the 10 h sleep scheduler, G-SHOCK sync, and NTP

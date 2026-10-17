@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -25,6 +26,7 @@
 #include "klend_ario/event.hh"
 #include "klend_ario/export.hh"
 #include "klend_ario/free.hh"
+#include "klend_ario/import.hh"
 #include "klend_ario/holidays.hh"
 #include "klend_ario/stats.hh"
 #include "klend_ario/sync.hh"
@@ -122,6 +124,36 @@ std::string resolvePassphrase(const Args &args, std::string &error) {
 
 std::string dbPathOf(const Args &args) {
     return args.dbPath.empty() ? defaultDbPath() : args.dbPath;
+}
+
+// Import reads the whole document before parsing: CSV quoting can put a
+// newline inside a field, and all-or-nothing validation needs the full set.
+std::string readAll(const std::string &path, std::string &error) {
+    if (path == "-") {
+        std::string text;
+        char buffer[4096];
+        size_t read = 0;
+        while ((read = std::fread(buffer, 1, sizeof(buffer), stdin)) > 0) {
+            text.append(buffer, read);
+        }
+        if (std::ferror(stdin) != 0) {
+            error = "cannot read stdin";
+            return {};
+        }
+        return text;
+    }
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        error = "cannot read file: " + path;
+        return {};
+    }
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (in.bad()) {
+        error = "cannot read file: " + path;
+        return {};
+    }
+    return text;
 }
 
 int openDb(const Args &args, Db &out, bool warnConflicts = true) {
@@ -916,6 +948,57 @@ int commandExport(const Args &args) {
     return kExitOk;
 }
 
+int commandImport(const Args &args) {
+    if (args.importPath.empty()) {
+        return usageError("import needs a file path (or - for stdin)");
+    }
+
+    const std::string formatName = args.json ? "jsonl" : (args.formatGiven ? args.format : "csv");
+    klend_ario::ImportFormat format = klend_ario::ImportFormat::Csv;
+    if (!klend_ario::importFormatFromName(formatName, format)) {
+        return usageError("unknown import --format: " + formatName + " (csv|jsonl)");
+    }
+
+    std::string readError;
+    const std::string text = readAll(args.importPath, readError);
+    if (!readError.empty()) {
+        std::fprintf(stderr, "error: %s\n", readError.c_str());
+        return kExitError;
+    }
+
+    auto parsed = klend_ario::parseImportedEvents(text, format);
+    if (!parsed) {
+        return reportError(parsed.error());
+    }
+    if (args.preserveIds) {
+        for (const Event &event : parsed.value()) {
+            if (event.id <= 0) {
+                return reportError(arc::Error{arc::ErrorKind::Other, 0,
+                                              "--preserve-ids needs a positive id on every row"});
+            }
+        }
+    }
+
+    ImportSummary summary;
+    summary.parsed = static_cast<long long>(parsed.value().size());
+    summary.dryRun = args.dryRun;
+    if (!args.dryRun) {
+        Db db;
+        if (const int rc = openDb(args, db); rc != kExitOk) {
+            return rc;
+        }
+        auto imported =
+            db.importEvents(parsed.value(), args.replace, args.preserveIds);
+        if (!imported) {
+            return reportError(imported.error());
+        }
+        summary.inserted = imported.value();
+    }
+
+    std::fputs(formatImportSummary(summary).c_str(), stdout);
+    return kExitOk;
+}
+
 int commandCompletion(const Args &args) {
     if (args.completionShell.empty()) {
         return usageError("completion needs a shell: bash|zsh|fish");
@@ -1007,6 +1090,9 @@ int runCommand(const Args &args) {
     if (args.verb == Verb::Export) {
         return commandExport(args);
     }
+    if (args.verb == Verb::Import) {
+        return commandImport(args);
+    }
     if (args.verb == Verb::Completion) {
         return commandCompletion(args);
     }
@@ -1056,6 +1142,7 @@ int runCommand(const Args &args) {
     case Verb::Holidays:
         return commandHolidays(args, format, options);
     case Verb::Export:
+    case Verb::Import:
     case Verb::Completion:
         break; // handled above, before display-format parsing
     case Verb::Help:

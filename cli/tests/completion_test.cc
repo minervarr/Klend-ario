@@ -13,8 +13,8 @@ namespace {
 void expectVerbs(const std::string &script) {
     for (const std::string_view verb :
          {"add", "edit", "duplicate", "list", "today", "week", "next", "agenda", "search",
-          "conflicts", "free", "alarms", "stats", "doctor", "export", "completion", "show",
-          "rm", "holidays", "help"}) {
+          "conflicts", "free", "alarms", "stats", "doctor", "export", "import",
+          "completion", "show", "rm", "holidays", "help"}) {
         assert(script.find(std::string(verb)) != std::string::npos);
     }
 }
