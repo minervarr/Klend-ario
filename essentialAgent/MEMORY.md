@@ -372,6 +372,41 @@ enough to keep, because both were decided against an obvious alternative.
 - The server is a **frontend**: it links core, opens the database through `Db`,
   and never reaches past it. `update_event` is the user-facing path for the
   `Db::updateEvent` added in Phase 1.
+- **The surface is a prompt.** `initialize.instructions`, tool `title`s,
+  descriptions and `annotations` are what a model reads before touching the
+  calendar; they must stay accurate, concrete and short. OpenCode consumes
+  `instructions` and the annotations.
+- **Inputs are strict.** No coercion: unknown arguments, string ids, string
+  booleans, non-integral numbers and `end < start` are errors with actionable
+  messages. A silently wrong calendar is worse than a rejected call
+  (`MEMORY.md` §5, the strict-parser lesson).
+- **`list_events` is an `EventQuery`, not a special path.** It carries the same
+  search/type/visibility/sort/limit/offset as the CLI, defaults to today 00:00
+  UTC + 7 days, and returns at most 100 rows (max 500) because result size is
+  context. A frontend never post-filters.
+- **Time is core.** `parseInstantExpr` / `parseDurationExpr` / `startOfDayUtc`
+  live in `core/timeexpr`; `mcp/` writes no date math. The server accepts
+  `today`, `tomorrow`, `week`, `+90m`, date-only, and durations (`90m`, `2h`).
+- **A read-only tier is a SQLite mode.** `--permissions read` opens with
+  `openReadOnly`/`openEncryptedReadOnly` and `tools/list` advertises only
+  list/get. A tool the server would refuse is not part of the surface. A
+  missing DB is a startup error, never an empty calendar.
+- **Results are text + structured.** Compact JSON stays in
+  `content[0].text` (OpenCode feeds that to the model); `structuredContent`
+  carries the host-renderable value. The 2025-era field is an OBJECT, so
+  `list_events` keeps the bare array in text and wraps it as `{"events": []}`
+  for structured content. `outputSchema` is deferred: it is paid for in every
+  `tools/list` prompt and no host validates it yet.
+- **Delete is idempotent.** `removeEvent` succeeds when nothing matched, the
+  CLI `rm` relies on it, and `delete_event` keeps that contract; the
+  instructions tell the model to `get_event` first.
+- **OpenCode is wired from the repo.** `opencode.jsonc` registers
+  `klend_ario` as a local MCP command with all tiers on. Restrict with
+  `--permissions read` (or `read,write`) in the command.
+- **Protocol policy: advertise what we implement.** The server says
+  `2025-06-18`. MCP `2026-07-28` (`server/discover`, `resultType`, per-request
+  `_meta`) is a future adoption with no benefit while OpenCode defaults to the
+  2025 handshake; it is not a silent default.
 
 ## 9. Alarms (Phase 6)
 

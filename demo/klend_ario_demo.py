@@ -1011,6 +1011,12 @@ class Demo:
                 f"{info.get('name', '?')} {info.get('version', '?')} "
                 f"(protocol {result.get('protocolVersion', '?')})",
             )
+            instructions = result.get("instructions")
+            if not isinstance(instructions, str) or not instructions.strip():
+                raise DemoError("MCP initialize did not return instructions")
+            self.narrator.mcp(
+                "←", f"instructions: {len(instructions.splitlines())} lines of calendar guidance"
+            )
 
             listed = self._mcp_rpc(proc, 2, "tools/list")
             result = listed.get("result", {})
@@ -1025,7 +1031,13 @@ class Demo:
             }
             if set(names) != expected_tools:
                 raise DemoError(f"unexpected MCP tool set: {names}")
+            for tool in tools:
+                if not isinstance(tool, dict) or not isinstance(tool.get("title"), str):
+                    raise DemoError(f"MCP tool without a human title: {tool}")
+                if not isinstance(tool.get("annotations"), dict):
+                    raise DemoError(f"MCP tool without annotations: {tool}")
             self.narrator.mcp("←", f"{len(names)} tools: {', '.join(str(name) for name in names)}")
+            self.narrator.mcp("←", "titles and annotations: list/get are read-only, delete is destructive")
 
             create = self._mcp_rpc(
                 proc,
@@ -1126,9 +1138,18 @@ class Demo:
             restricted = self._mcp_start("read")
             self._mcp_rpc(restricted, 1, "initialize", {})
             self.narrator.mcp("←", "read-only session initialised")
+            read_list = self._mcp_rpc(restricted, 2, "tools/list")
+            read_result = read_list.get("result", {})
+            read_tools = read_result.get("tools", []) if isinstance(read_result, dict) else []
+            read_names = sorted(
+                str(tool.get("name")) for tool in read_tools if isinstance(tool, dict)
+            )
+            if read_names != ["get_event", "list_events"]:
+                raise DemoError(f"read-only server advertised {read_names}")
+            self.narrator.mcp("←", f"read-only tools: {', '.join(read_names)}")
             denied = self._mcp_rpc(
                 restricted,
-                2,
+                3,
                 "tools/call",
                 {
                     "name": "create_event",
@@ -1144,7 +1165,9 @@ class Demo:
                 self._mcp_close(restricted)
 
         self.mcp_done = True
-        self.narrator.note("Five tools exercised; the read-only server denied the write tier.")
+        self.narrator.note(
+            "Five tools exercised; the read-only server advertised only list/get and denied the write tier."
+        )
         self.end_section()
 
     # ------------------------------------------------------------------

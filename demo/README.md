@@ -26,7 +26,7 @@ export/import and the alarm engine.
 | 7 | Scripting | parse `--format json` from Python and build a small day plan |
 | 8 | Shell completion | `completion bash`, `zsh`, `fish` (printed, not installed) |
 | 9 | Encryption | key file, plaintext rejection, right key, wrong key |
-| 10 | MCP server | `initialize`, `tools/list`, create/get/list/update/delete, read-only permission denial |
+| 10 | MCP server | `initialize` (instructions), `tools/list` (titles/annotations, tier-filtered), create/get/list/update/delete, read-only permission denial |
 | 11 | Alarm engine | `klend_ario_alarmd --once --notify log` with a trigger due now |
 | 12 | Done | a short checklist, then cleanup |
 
@@ -47,6 +47,36 @@ Binary discovery is, in order: `--cli`, the build directory next to the chosen
 CLI (or `build/`, then `build_release/`), and finally `PATH`. A missing CLI is
 an error with the CMake/Ninja command to build it; a missing MCP server or alarm
 daemon only skips that section.
+
+## Focused MCP smoke test
+
+`mcp_smoke.py` is the quiet companion to the demo: it exercises only the MCP
+server, over the same newline-delimited JSON-RPC transport a real host uses.
+
+```bash
+ninja -C build
+python3 demo/mcp_smoke.py
+```
+
+It asserts the `initialize` handshake and instructions, the five tool schemas
+with titles/annotations, a full create/get/list/update/delete round-trip,
+structured content, strict-input errors, relative time and durations, the
+read-only permission tier (including the tier-filtered `tools/list`), and that
+stdout carries protocol frames and nothing else. When `klend_ario_cli` is built
+it also reads the MCP-written rows through the CLI on the same database,
+proving both frontends share one SQLite file.
+
+```bash
+python3 demo/mcp_smoke.py --release   # prefer build_release/
+python3 demo/mcp_smoke.py --keep      # inspect the temporary database
+python3 demo/mcp_smoke.py -v          # print every JSON-RPC frame
+```
+
+Exit codes: `0` every check passed, `1` a check failed, `2` bad arguments or a
+missing binary. The script uses one `klend_ario_mcp_smoke-*` temporary
+directory, passes an explicit `--db` to every process, drops `KLEND_ARIO_KEY`
+from the child environment, and removes the directory on exit, `SIGINT` and
+`SIGTERM`. It never touches the real `state` database or `opencode.jsonc`.
 
 ## Clean-run guarantee
 

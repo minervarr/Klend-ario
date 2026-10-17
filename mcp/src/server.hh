@@ -11,13 +11,14 @@
 //
 // The tool surface is deliberately small (five tools) and the transport is one
 // JSON-RPC message per line, because MCP's whole cost model is context tokens.
+// The surface is also a prompt: `instructions`, tool titles/descriptions and
+// annotations are what a model reads before it touches the calendar.
 
 namespace klend_ario::mcp {
 
 // Permission tiers (merged.md §7). READ covers list/get; WRITE covers
-// create/update; DESTRUCTIVE covers delete. The split exists now even though
-// all three default on, so restricting a deployment later is configuration,
-// not a refactor.
+// create/update; DESTRUCTIVE covers delete. A tier that is off is not
+// advertised in tools/list and is refused in tools/call.
 enum class Tier { Read, Write, Destructive };
 
 struct Permissions {
@@ -39,6 +40,12 @@ public:
 private:
     Json callTool(const std::string &name, const Json *arguments);
     Json toolsList() const;
+
+    Json listEvents(const Json &arguments);
+    Json getEvent(const Json &arguments);
+    Json createEvent(const Json &arguments);
+    Json updateEvent(const Json &arguments);
+    Json deleteEvent(const Json &arguments);
 
     klend_ario::Db db_;
     Permissions permissions_;

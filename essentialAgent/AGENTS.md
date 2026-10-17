@@ -154,6 +154,14 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   bound, `ORDER BY` is a whitelist, and the half-open overlap rule lives in one
   place (`listEvents` delegates). `hidden` is a weekly-view flag, not deletion:
   data verbs see hidden rows, view verbs filter them by default.
+- **MCP is a frontend with the CLI's rules.** Time comes from `core/timeexpr`,
+  reads are `EventQuery`, a read-only deployment uses `Db::openReadOnly`, and
+  stdout carries protocol frames only. It never grows a sixth tool without a
+  product decision (`merged.md` §7, `MEMORY.md` §8).
+- **The MCP surface is a prompt.** `initialize.instructions`, tool
+  titles/descriptions/annotations and actionable errors are what the model
+  reads. Keep them accurate and small: they are paid for on every session, and
+  a wrong description is a wrong calendar.
 - **Intelligence is pure where it can be.** `findConflicts` and `freeSlots` are
   interval functions over a vector of events, tested without a database.
   `EventType::Alarm` rows are reminders, not busy blocks, and a hidden row still

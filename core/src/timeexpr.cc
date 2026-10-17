@@ -7,6 +7,12 @@
 #include "klend_ario/event.hh"
 
 namespace klend_ario {
+
+long long startOfDayUtc(long long utcSeconds) {
+    const long long secondsIntoDay = ((utcSeconds % 86400) + 86400) % 86400;
+    return utcSeconds - secondsIntoDay;
+}
+
 namespace {
 
 std::string_view trim(std::string_view text) {
@@ -54,12 +60,6 @@ bool mulChecked(long long a, long long b, long long &out) {
     }
     out = a * b;
     return true;
-}
-
-// 00:00 UTC of the day containing `utcSeconds`, correct before 1970 too.
-long long startOfDayUtc(long long utcSeconds) {
-    const long long secondsIntoDay = ((utcSeconds % 86400) + 86400) % 86400;
-    return utcSeconds - secondsIntoDay;
 }
 
 bool parseDigits(std::string_view text, size_t &i, long long &out) {

@@ -123,6 +123,29 @@ bash|zsh|fish` prints a script for your shell.
 The CLI feature set is frozen as of 2026-10-17; new feature work goes to the
 GUI. Bug fixes and tests still belong here.
 
+## AI client (OpenCode)
+
+The MCP server is the AI-facing surface. This repository's
+[`opencode.jsonc`](opencode.jsonc) already registers it as a local command with
+all permission tiers enabled; the same block in a user config is:
+
+```jsonc
+{
+  "mcp": {
+    "klend_ario": {
+      "type": "local",
+      "command": ["./build/mcp/klend_ario_mcp_server"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Add `"--permissions", "read"` (or `"read,write"`) to keep an agent away from
+destructive edits. `initialize` carries the calendar instructions the model
+reads, and `list_events` accepts the same relative time grammar as the CLI.
+See [`mcp/README.md`](mcp/README.md) for the tool contract.
+
 ## Demo
 
 The permanent end-to-end showcase drives the built binaries against a throwaway

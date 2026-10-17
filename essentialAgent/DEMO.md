@@ -75,7 +75,7 @@ The sections are ordered so each one can use what the previous ones created.
 | 7 | Scripting | parse `--format json` with Python and compute a small day plan; prove an export → import round-trip |
 | 8 | Shell | `completion bash`, `zsh`, `fish` (shown, not installed) |
 | 9 | Encryption | key file, plaintext open fails with the hint, encrypted open succeeds |
-| 10 | MCP (optional) | `initialize`, `tools/list`, `create_event`, `list_events`, `get_event`, `update_event`, `delete_event`; `--permissions read` denial |
+| 10 | MCP (optional) | `initialize` (instructions), `tools/list` (titles/annotations, tier-filtered), `create_event`, `list_events`, `get_event`, `update_event`, `delete_event`; `--permissions read` denial |
 | 11 | Alarm (optional) | `klend_ario_alarmd --once --notify log` with a trigger due now |
 | 12 | Summary | a checklist of what passed, then temp-root removal |
 

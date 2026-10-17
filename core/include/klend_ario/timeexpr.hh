@@ -37,4 +37,9 @@ std::optional<long long> parseInstantExpr(std::string_view text, long long nowUt
 
 std::optional<long long> parseDurationExpr(std::string_view text);
 
+// 00:00 UTC of the day containing `utcSeconds`, correct before 1970 too.
+// `today` resolves through this, and the MCP server's default range needs a
+// day boundary; keeping it here means a frontend never writes its own modulus.
+long long startOfDayUtc(long long utcSeconds);
+
 } // namespace klend_ario

@@ -77,12 +77,6 @@ int usageError(const std::string &message) {
     return kExitUsage;
 }
 
-// 00:00 UTC of the day containing `utcSeconds`; correct before 1970.
-long long startOfDayUtc(long long utcSeconds) {
-    const long long secondsIntoDay = ((utcSeconds % kDaySeconds) + kDaySeconds) % kDaySeconds;
-    return utcSeconds - secondsIntoDay;
-}
-
 bool addChecked(long long a, long long b, long long &out) {
     if ((b > 0 && a > std::numeric_limits<long long>::max() - b) ||
         (b < 0 && a < std::numeric_limits<long long>::min() - b)) {

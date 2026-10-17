@@ -29,6 +29,14 @@ void testAbsolute() {
     // A date-only form is UTC midnight; it is also what makes `--from` pleasant.
     assert(parseInstantExpr("2026-10-16", now) == instant("2026-10-16T00:00:00Z"));
     assert(!parseInstantExpr("2026-10-16T09:00", now).has_value()); // no Z => not UTC
+
+    // The day boundary is a pure floor, including before the epoch. The MCP
+    // server's default range and `today` both go through this one function.
+    assert(startOfDayUtc(instant("2026-10-16T14:44:00Z")) ==
+           instant("2026-10-16T00:00:00Z"));
+    assert(startOfDayUtc(instant("2026-10-16T00:00:00Z")) ==
+           instant("2026-10-16T00:00:00Z"));
+    assert(startOfDayUtc(-1) == instant("1969-12-31T00:00:00Z"));
 }
 
 void testKeywords() {

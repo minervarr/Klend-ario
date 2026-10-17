@@ -125,6 +125,40 @@ docs or in the demo, not a reason to add a verb.
 
 ---
 
+## MCP AI-readiness (2026-10-17)
+
+Phase 5 shipped a working wire; this pass makes the surface legible to a model
+and safe for a human. It stays inside the five-tool decision in `merged.md` §7
+and adds no CLI or schema surface.
+
+- [x] **Contract** — `mcp/README.md` documents the transport, tiers, DB/key
+      handling, OpenCode config, tool semantics, error model and protocol
+      policy before the code changes.
+- [x] **Instructions** — `initialize` carries UTC/half-open/hidden/alarm/edit
+      guidance, because OpenCode feeds `instructions` to the model.
+- [x] **Metadata** — tool `title`s and `annotations` (read-only, destructive,
+      idempotent, closed-world), real JSON Schema enums/bounds and
+      `additionalProperties: false`; richer descriptions.
+- [x] **Strict inputs** — no coercion; `end >= start`; `hidden` is a real bool;
+      ids are positive integers; unknown arguments name the allowed set.
+- [x] **Core time and queries** — `parseInstantExpr`/`parseDurationExpr`/
+      `startOfDayUtc`; `list_events` is an `EventQuery` with search, type,
+      visibility, sort, limit and offset. `startOfDayUtc` moved from a CLI copy
+      into core and is pinned by `timeexpr_test`.
+- [x] **Tier honesty** — `tools/list` advertises only enabled tiers; a
+      read-only deployment opens the database read-only.
+- [x] **Results** — compact JSON in text plus `structuredContent` (object
+      results match the text; lists wrap their array as `{"events": [...]}`);
+      output schemas deferred as a recorded decision.
+- [x] **Proof** — `server_test` covers metadata, strict inputs, query
+      semantics, tiers and structured content; `demo/mcp_smoke.py` drives the
+      real binary; `opencode.jsonc` registers the server and `opencode mcp list`
+      sees it.
+- [x] **Records** — this section, `MEMORY.md` §8, `TESTING.md`, `DEMO.md`, the
+      root README and `mcp/README.md` are updated in the same change.
+
+---
+
 ## Phase 0 — the exact scaffold
 
 Everything below is created **before feature code**, so a fresh session can build
@@ -218,6 +252,18 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **MCP AI-readiness (2026-10-17).** Hardened Phase 5's surface without adding
+  tools: `initialize.instructions`, tool titles/annotations, strict argument
+  validation (`end >= start`, real booleans/integers, unknown-argument errors),
+  core time expressions and durations, `list_events` as an `EventQuery`
+  (search/type/visibility/sort/limit/offset), tier-filtered `tools/list`, a
+  read-only SQLite open, and `structuredContent` alongside the compact text.
+  `startOfDayUtc` moved from the CLI into `core/timeexpr` and is tested. Added
+  `mcp/README.md`, wired `opencode.jsonc`, and extended `server_test` and
+  `demo/mcp_smoke.py`; 28 suites pass and the live OpenCode client now sees the
+  server's tools. Protocol stays 2025-06-18; 2026-07-28 is a recorded future
+  adoption. No submodule change.
 
 - **Demo showcase shipped (2026-10-17).** Added `demo/klend_ario_demo.py` and
   `demo/README.md`: a stdlib-only, narrated tour of all 21 CLI verbs, the five

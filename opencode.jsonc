@@ -10,4 +10,14 @@
   ],
   // Reusable workflows (essentialAgent/skills/klend-ario/SKILL.md).
   "skills": ["./essentialAgent/skills"],
+  // The app's own MCP server: the AI-facing calendar surface (mcp/README.md).
+  // All tiers default on; append "--permissions", "read" to restrict an agent.
+  "mcp": {
+    "klend_ario": {
+      "type": "local",
+      "command": ["./build/mcp/klend_ario_mcp_server"],
+      "timeout": 10000,
+      "enabled": true,
+    },
+  },
 }

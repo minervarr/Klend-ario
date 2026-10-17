@@ -84,6 +84,9 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
 | CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`export`/`import`/`completion`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`/`completion`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
+| MCP JSON parser/serializer | `mcp/tests/json_test.cc` | `mcp/src/json.cc` | none |
+| MCP JSON-RPC dispatch + five tools | `mcp/tests/server_test.cc` | `mcp/src/json.cc mcp/src/server.cc` + core | in-memory DB |
+| MCP end-to-end (real stdio) | `demo/mcp_smoke.py` | the built binary | throwaway temp DB; **not** CTest |
 
 ### Time and day model
 
@@ -104,6 +107,8 @@ test reads the clock:
 
 - `today` is 00:00 UTC of the day containing `now`; `tomorrow`/`yesterday` are
   ±86,400 s. Pre-epoch input floors to the day, never truncates toward zero.
+  `startOfDayUtc` is the same floor as a public core function; the CLI's default
+  range and the MCP server's default `from` both call it.
 - `week` is the Sunday that starts the current week; `next-week`/`last-week`
   move by seven days (the product week starts Sunday, `merged.md` §1).
 - `friday` on a Friday is **today**, not a week later; otherwise it is the next
@@ -236,6 +241,30 @@ contract is tested without capturing stdout:
 
 An end-to-end test still drives parsing → command → core → SQLite with a temp
 DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
+
+### MCP surface
+
+`server_test` pins the model-facing contract, not only the wire:
+
+- `initialize` returns `2025-06-18`, `capabilities.tools.listChanged = false`,
+  and non-empty `instructions` (UTC, half-open ranges, hidden rows, alarms).
+- `tools/list` carries titles and annotations (`readOnlyHint` for list/get,
+  `destructiveHint` for update/delete, `idempotentHint` for create=false), real
+  enums/bounds, and `additionalProperties: false`.
+- Inputs are strict: unknown arguments, string ids, string booleans, out-of-range
+  importance/urgency, `end < start`, `end` + `duration`, and an empty update are
+  tool errors with actionable text; an unknown tool is JSON-RPC `-32602`.
+- `list_events` is an `EventQuery`: search is a trimmed literal substring, type
+  and visibility filter, sort is deterministic, and `limit 0` returns nothing.
+- Every successful data call has `structuredContent`; single-event and id
+  results equal their text JSON, while `list_events` wraps the text array as
+  `{"events": [...]}` because the 2025-era field is an object.
+- A read-only `Server` advertises only list/get and denies create.
+- `delete_event` remains idempotent for a missing id (the core/CLI contract).
+
+`demo/mcp_smoke.py` drives the real binary over newline-delimited JSON-RPC,
+asserts the same surface, and cross-checks the MCP write through the CLI on the
+same database. It is the host-shaped check, not a CTest suite.
 
 `holidays_test` tests the **boundary**, not the calendar: the child's own suites
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
