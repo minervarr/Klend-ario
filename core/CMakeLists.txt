@@ -20,6 +20,7 @@ add_library(klend_ario_core STATIC
     src/db.cc
     src/schema.cc
     src/event.cc
+    src/timeexpr.cc
     src/alarm.cc
     src/sync.cc
     src/holidays.cc)
@@ -53,6 +54,12 @@ include(TestHelpers)
 
 klend_ario_add_test(event_test
     SOURCES  tests/event_test.cc src/event.cc
+    INCLUDES include)
+
+# timeexpr_test — the user-facing instant/duration grammar. It links the
+# parser and the model it resolves against; no clock is read.
+klend_ario_add_test(timeexpr_test
+    SOURCES  tests/timeexpr_test.cc src/timeexpr.cc src/event.cc
     INCLUDES include)
 
 klend_ario_add_test(schema_test

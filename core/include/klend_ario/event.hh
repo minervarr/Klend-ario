@@ -25,6 +25,13 @@ bool eventTypeFromName(std::string_view name, EventType &out);
 // One row in `events`. Timestamps are Unix seconds, UTC: the model stores an
 // INSTANT, not a wall-clock reading. Where that instant is drawn in a local
 // week is a rendering question for a later phase.
+//
+// A civil day is HALF-OPEN: [00:00:00, next 00:00:00), exactly 86,400 whole
+// seconds. 23:59:59 is the last named second (86,399 s after midnight), not the
+// day's length; the next midnight belongs to the next day. The model has no
+// sub-second field, so microseconds stay an input/display concern until a
+// column exists. From the 2026-10-16 notes: 80,000 s = 22:13:20,
+// 81,000 s = 22:30:00, and the gap is 1,000 s = 16 min 40 s.
 struct Event {
     long long id = 0; // 0 until inserted
     std::string title;
@@ -82,7 +89,8 @@ EventStyle styleFor(const Event &event);
 // ---------------------------------------------------------------------------
 // Calendar arithmetic. The week STARTS SUNDAY (merged.md §1) and every instant
 // is UTC. Pure integer math — no <ctime>, no timezone database — so a boundary
-// can be asserted exactly.
+// can be asserted exactly. UTC is the model; a local zone is a rendering
+// concern, and NTP is a runtime frontend concern, never a dependency here.
 // ---------------------------------------------------------------------------
 
 // 0 = Sunday .. 6 = Saturday, for the UTC day containing `utcSeconds`.

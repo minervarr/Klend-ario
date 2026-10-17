@@ -13,6 +13,7 @@ Klend-ario/
 ├── AGENTS.md                     # root pointer (auto-loaded) -> this folder
 ├── opencode.jsonc                # wires essentialAgent/ into OpenCode
 ├── essentialAgent/               # the agent manual (this folder)
+│   └── REQUIREMENTS.md           # captured 2026-10-16 notes (source + normalized)
 ├── merged.md                     # the product plan ("Openseek")
 ├── manifest.json                 # name/version/platforms/build
 ├── CMakeLists.txt                # CMake + Ninja only
@@ -58,6 +59,28 @@ Klend-ario/
    (`klend_ario/holidays.hh`: `holidaysFor`, `isHoliday`, `holidayOn`), never by
    including the library's registry from a frontend. A frontend never gets its
    own holiday table.
+9. **Desktop first.** Linux is the only active platform; Android is deferred
+   (Phase 7). No JNI, NDK, gradle, or Android SDK work until that phase is
+   explicitly reopened.
+10. **UTC is canonical.** Store and compare instants as Unix seconds UTC. Local
+    zones are display-only; showing local time must still leave UTC visible.
+    `core/` never asks the OS for the local timezone. NTP is a runtime frontend
+    concern, never a core dependency or a test dependency.
+11. **A day is half-open.** The interval is `[00:00:00, next 00:00:00)` =
+    **86,400 seconds**. 23:59:59 is the last named second (86,399 s after
+    midnight), not the length. Use half-open ranges; never add an inclusive
+    endpoint that duplicates a second.
+12. **Performance first, but measured.** SQLite is the current store. JSON is a
+    hypothesis to benchmark, not a default; do not rewrite storage without a
+    measured win on the real operations. Encryption is implemented; do not
+    expand or remove it while performance is the priority without a recorded
+    decision.
+13. **Captured requirements do not move the phase.** The notes companion, the
+    10-hour sleep scheduler, G-SHOCK sync, and NTP are post-MVP
+    (`REQUIREMENTS.md`); implement them only when their phase starts.
+14. **Notes reference events; they do not copy them.** A future note links to
+    `events.id`. Sleep is a first-class dynamic `sleep` event: default 10 hours,
+    auto-generated, hideable/showable automatically — not a GUI special case.
 
 ## 3. Build & test
 
@@ -96,8 +119,20 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   timezone or `<ctime>`. `holidaysFor`/`isHoliday` treat an unknown country as
   `Err`, while "that day is not a holiday" is `Ok` (and `Ok(nullopt)` for
   `holidayOn`). Do not copy the Peru calendar into `core/`.
+- **Time** is Unix seconds UTC. Keep calendar math pure integer; parse/format
+  ISO-8601 UTC at the edge. A local zone is a rendering choice, never a stored
+  value or a core dependency.
+- **Day arithmetic** is half-open `[0, 86400)`. The notes' 80,000–81,000 s
+  example is a test vector: 22:13:20 → 22:30:00, 1,000 s = 16 min 40 s.
 - **CLI** is a thin shell: parse args → call a core function → print. No business
   logic in `cli/`.
+- **CLI time expressions** (`today`, `week+7d`, `90m`) are UTC and parsed by
+  `klend_ario/timeexpr.hh` in core, never by ad-hoc date code in `cli/`.
+- **CLI output** is rendered by the pure functions in `cli/src/format.cc`
+  (text/table/json/csv/tsv) and printed once. Do not `printf` rows from inside a
+  command; that is what made the visible contract untestable.
+- **A partial edit changes only supplied flags.** Carry a `*Given` flag in
+  `Args` for every editable field; a default value cannot mean "leave alone".
 - Every comment that explains a *surprising* choice is worth its weight. Every
   comment that restates the code is noise (`MEMORY.md` §5).
 
@@ -110,7 +145,9 @@ A change is done when:
    the change (`TESTING.md`).
 3. `core/` still contains no platform or frontend dependency.
 4. Any decision or gotcha it introduces is written into `essentialAgent/`.
-5. It is committed with `./git_wrapper` (below).
+5. If it captures or changes a requirement, `REQUIREMENTS.md`, `MEMORY.md`, and
+   `PLAN.md` are updated in the same change.
+6. It is committed with `./git_wrapper` (below).
 
 ## 6. Git
 
@@ -127,6 +164,12 @@ A change is done when:
 
 - Do not invent a GUI, an MCP server, or encryption early. Phases are in
   `PLAN.md`; stay in the current one unless asked.
+- Do not add Android, JNI, NDK, or gradle work before Phase 7 is reopened.
+- Do not replace SQLite with JSON, or remove encryption, without a measured
+  benchmark and a decision in `MEMORY.md`.
+- Do not make `core/` read the local timezone or perform network/NTP work.
+- Do not implement the notes app, sleep scheduler, or G-SHOCK sync outside their
+  phases.
 - Do not put a SQLite file anywhere but `state`.
 - Do not reach past `arc_fs` for filesystem work "just this once".
 - Do not edit `libs/firstparty/archive_engine` to make this app's life easier

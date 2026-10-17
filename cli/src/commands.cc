@@ -1,19 +1,25 @@
 // The command layer: parse (done) -> call one core function -> print. No
 // business logic lives here (essentialAgent/AGENTS.md §4). Everything the CLI
-// knows how to do is a thin wrapping of a klend_ario::Db call.
+// knows how to do is a thin wrapping of a klend_ario:: call.
+//
+// Rendering is the one exception that is not "logic": it lives in format.cc as
+// pure functions returning strings, so the bytes a user sees are testable.
 
 #include "commands.hh"
 
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <string>
 
 #include "arc/fs/paths.hh"
+#include "format.hh"
 #include "klend_ario/db.hh"
 #include "klend_ario/event.hh"
 #include "klend_ario/holidays.hh"
 #include "klend_ario/sync.hh"
+#include "klend_ario/timeexpr.hh"
 
 namespace klend_ario::cli {
 namespace {
@@ -21,9 +27,9 @@ namespace {
 using klend_ario::Db;
 using klend_ario::Event;
 using klend_ario::EventType;
-using klend_ario::holidays::Holiday;
 
-constexpr long long kWeekSeconds = 7 * 86400;
+constexpr long long kDaySeconds = 86400;
+constexpr long long kWeekSeconds = 7 * kDaySeconds;
 
 // The database lives in the app's STATE directory — machine data, written
 // constantly — never home/data and never beside the executable
@@ -45,71 +51,40 @@ int usageError(const std::string &message) {
     return kExitUsage;
 }
 
-std::string jsonEscape(const std::string &in) {
-    std::string out;
-    out.reserve(in.size());
-    for (const char c : in) {
-        switch (c) {
-        case '"':
-            out += "\\\"";
-            break;
-        case '\\':
-            out += "\\\\";
-            break;
-        case '\n':
-            out += "\\n";
-            break;
-        case '\r':
-            out += "\\r";
-            break;
-        case '\t':
-            out += "\\t";
-            break;
-        default:
-            if (static_cast<unsigned char>(c) < 0x20) {
-                char buffer[8];
-                std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
-                out += buffer;
-            } else {
-                out += c;
-            }
-        }
-    }
-    return out;
+// 00:00 UTC of the day containing `utcSeconds`; correct before 1970.
+long long startOfDayUtc(long long utcSeconds) {
+    const long long secondsIntoDay = ((utcSeconds % kDaySeconds) + kDaySeconds) % kDaySeconds;
+    return utcSeconds - secondsIntoDay;
 }
 
-void printEventText(const Event &e) {
-    std::printf("%lld  %s  %s  %s", e.id, klend_ario::formatIso8601(e.startUtc).c_str(),
-                klend_ario::formatIso8601(e.endUtc).c_str(), e.title.c_str());
-    if (e.type != EventType::Event) {
-        std::printf("  [%s]", klend_ario::eventTypeName(e.type));
+bool addChecked(long long a, long long b, long long &out) {
+    if ((b > 0 && a > std::numeric_limits<long long>::max() - b) ||
+        (b < 0 && a < std::numeric_limits<long long>::min() - b)) {
+        return false;
     }
-    if (e.hidden) {
-        std::printf("  [hidden]");
-    }
-    std::printf("\n");
+    out = a + b;
+    return true;
 }
 
-void printEventJson(const Event &e) {
-    std::printf("{\"id\":%lld,\"title\":\"%s\",\"start\":\"%s\",\"end\":\"%s\","
-                "\"type\":\"%s\",\"importance\":%d,\"urgency\":%d,\"alarm_offset\":%d,"
-                "\"hidden\":%s,\"notes\":\"%s\"}",
-                e.id, jsonEscape(e.title).c_str(), klend_ario::formatIso8601(e.startUtc).c_str(),
-                klend_ario::formatIso8601(e.endUtc).c_str(), klend_ario::eventTypeName(e.type),
-                e.importance, e.urgency, e.alarmOffset, e.hidden ? "true" : "false",
-                jsonEscape(e.notes).c_str());
+// A shift may go backwards, so it accepts an explicit sign that the plain
+// duration grammar (non-negative by design) does not.
+std::optional<long long> parseSignedDuration(std::string_view text) {
+    bool negative = false;
+    if (!text.empty() && (text[0] == '+' || text[0] == '-')) {
+        negative = text[0] == '-';
+        text.remove_prefix(1);
+    }
+    const auto duration = parseDurationExpr(text);
+    if (!duration) {
+        return std::nullopt;
+    }
+    return negative ? -*duration : *duration;
 }
 
-void printHolidayJson(const Holiday &h) {
-    std::printf("{\"date\":\"%s\",\"name\":\"%s\",\"non_working\":%s,\"observed\":",
-                h.date.toString().c_str(), jsonEscape(std::string(h.name)).c_str(),
-                h.nonWorking ? "true" : "false");
-    if (h.observed) {
-        std::printf("\"%s\"", h.observed->toString().c_str());
-    } else {
-        std::printf("null");
-    }
-    std::printf("}");
+FormatOptions formatOptionsOf(const Args &args) {
+    FormatOptions options;
+    options.header = !args.noHeader;
+    return options;
 }
 
 // The passphrase, from --key-file (first line) or $KLEND_ARIO_KEY. An explicit
@@ -162,30 +137,101 @@ int openDb(const Args &args, Db &out) {
     return kExitOk;
 }
 
-int commandAdd(const Args &args) {
-    if (args.title.empty()) {
-        return usageError("add needs --title");
-    }
-    if (args.start.empty() || args.end.empty()) {
-        return usageError("add needs --start and --end");
-    }
-    if (args.importance < 0 || args.importance > 100) {
+std::optional<long long> parseInstant(const std::string &text, long long nowUtc) {
+    return klend_ario::parseInstantExpr(text, nowUtc);
+}
+
+int validateImportance(const Args &args) {
+    if (args.importanceGiven && (args.importance < 0 || args.importance > 100)) {
         return usageError("--importance must be 0..100");
     }
-    if (args.urgency < 0 || args.urgency > 100) {
+    if (args.urgencyGiven && (args.urgency < 0 || args.urgency > 100)) {
         return usageError("--urgency must be 0..100");
     }
-    const auto start = klend_ario::parseIso8601(args.start);
-    if (!start) {
-        return usageError("--start is not ISO-8601 UTC (e.g. 2026-10-16T09:00:00Z)");
+    return kExitOk;
+}
+
+// Applies only the fields the user actually supplied. Shared by add (where the
+// struct starts empty) and edit (where it starts from the stored row), so the
+// two cannot drift on type/range rules.
+int applyEventFields(const Args &args, Event &event) {
+    if (args.titleGiven) {
+        if (args.title.empty()) {
+            return usageError("--title must not be empty");
+        }
+        event.title = args.title;
     }
-    const auto end = klend_ario::parseIso8601(args.end);
-    if (!end) {
-        return usageError("--end is not ISO-8601 UTC (e.g. 2026-10-16T10:00:00Z)");
+    if (args.typeGiven) {
+        EventType type = EventType::Event;
+        if (!klend_ario::eventTypeFromName(args.type, type)) {
+            return usageError("--type must be event|sleep|wake|alarm");
+        }
+        event.type = type;
     }
-    EventType type = EventType::Event;
-    if (!klend_ario::eventTypeFromName(args.type, type)) {
-        return usageError("--type must be event|sleep|wake|alarm");
+    if (args.importanceGiven) {
+        event.importance = args.importance;
+    }
+    if (args.urgencyGiven) {
+        event.urgency = args.urgency;
+    }
+    if (args.alarmOffsetGiven) {
+        event.alarmOffset = args.alarmOffset;
+    }
+    if (args.notesGiven) {
+        event.notes = args.notes;
+    }
+    if (args.hiddenGiven) {
+        event.hidden = args.hidden;
+    }
+    return validateImportance(args);
+}
+
+int commandAdd(const Args &args, OutputFormat format, const FormatOptions &) {
+    if (!args.titleGiven || args.title.empty()) {
+        return usageError("add needs a title (positional or --title)");
+    }
+    if (args.endGiven && args.durationGiven) {
+        return usageError("use --end or --duration, not both");
+    }
+    if (!args.startGiven && !args.durationGiven) {
+        return usageError("add needs --start (or --duration, which starts now)");
+    }
+
+    const long long now = klend_ario::utcNowSeconds();
+    long long startUtc = now;
+    if (args.startGiven) {
+        const auto parsed = parseInstant(args.start, now);
+        if (!parsed) {
+            return usageError("--start is not a UTC instant (e.g. 2026-10-16T09:00:00Z, today, now+2h)");
+        }
+        startUtc = *parsed;
+    }
+
+    long long endUtc = 0;
+    if (args.endGiven) {
+        const auto parsed = parseInstant(args.end, now);
+        if (!parsed) {
+            return usageError("--end is not a UTC instant (e.g. 2026-10-16T10:00:00Z, today+1h)");
+        }
+        endUtc = *parsed;
+    } else {
+        const auto duration = parseDurationExpr(args.duration);
+        if (!duration) {
+            return usageError("--duration is not a duration (e.g. 90m, 2h, 1h30m)");
+        }
+        if (!addChecked(startUtc, *duration, endUtc)) {
+            return usageError("--duration is out of range");
+        }
+    }
+    if (endUtc < startUtc) {
+        return usageError("--end is before --start");
+    }
+
+    Event event;
+    event.startUtc = startUtc;
+    event.endUtc = endUtc;
+    if (const int rc = applyEventFields(args, event); rc != kExitOk) {
+        return rc;
     }
 
     Db db;
@@ -193,45 +239,174 @@ int commandAdd(const Args &args) {
         return rc;
     }
 
-    Event e;
-    e.title = args.title;
-    e.startUtc = *start;
-    e.endUtc = *end;
-    e.type = type;
-    e.importance = args.importance;
-    e.urgency = args.urgency;
-    e.alarmOffset = args.alarmOffset;
-    e.hidden = args.hidden;
-    e.notes = args.notes;
-
-    auto id = db.insertEvent(e);
+    auto id = db.insertEvent(event);
     if (!id) {
         return reportError(id.error());
     }
-    if (args.json) {
-        std::printf("{\"id\":%lld}\n", id.value());
-    } else {
-        std::printf("%lld\n", id.value());
-    }
+    std::fputs(formatId(id.value(), format).c_str(), stdout);
     return kExitOk;
 }
 
-int commandList(const Args &args) {
-    long long from = klend_ario::utcNowSeconds();
-    if (!args.from.empty()) {
-        const auto parsed = klend_ario::parseIso8601(args.from);
+int commandEdit(const Args &args, OutputFormat format, const FormatOptions &) {
+    if (args.id <= 0) {
+        return usageError("edit needs an event id");
+    }
+    if (args.shiftGiven && (args.startGiven || args.endGiven || args.durationGiven)) {
+        return usageError("--shift cannot be combined with --start/--end/--duration");
+    }
+    if (args.endGiven && args.durationGiven) {
+        return usageError("use --end or --duration, not both");
+    }
+
+    Db db;
+    if (const int rc = openDb(args, db); rc != kExitOk) {
+        return rc;
+    }
+    auto stored = db.getEvent(args.id);
+    if (!stored) {
+        return reportError(stored.error());
+    }
+    Event event = stored.value();
+
+    if (const int rc = applyEventFields(args, event); rc != kExitOk) {
+        return rc;
+    }
+
+    const long long now = klend_ario::utcNowSeconds();
+    const long long oldDuration = event.endUtc - event.startUtc;
+    long long newStart = event.startUtc;
+    long long newEnd = event.endUtc;
+
+    if (args.startGiven) {
+        const auto parsed = parseInstant(args.start, now);
         if (!parsed) {
-            return usageError("--from is not ISO-8601 UTC");
+            return usageError("--start is not a UTC instant");
+        }
+        newStart = *parsed;
+    }
+    if (args.shiftGiven) {
+        const auto shift = parseSignedDuration(args.shift);
+        if (!shift) {
+            return usageError("--shift is not a duration (e.g. 1h, -30m)");
+        }
+        if (!addChecked(newStart, *shift, newStart) || !addChecked(newEnd, *shift, newEnd)) {
+            return usageError("--shift is out of range");
+        }
+    }
+
+    if (args.durationGiven) {
+        const auto duration = parseDurationExpr(args.duration);
+        if (!duration) {
+            return usageError("--duration is not a duration (e.g. 90m, 2h)");
+        }
+        if (!addChecked(newStart, *duration, newEnd)) {
+            return usageError("--duration is out of range");
+        }
+    } else if (args.endGiven) {
+        const auto parsed = parseInstant(args.end, now);
+        if (!parsed) {
+            return usageError("--end is not a UTC instant");
+        }
+        newEnd = *parsed;
+    } else if (args.startGiven) {
+        // Moving the start alone keeps the event's length; changing the length
+        // is an explicit --end or --duration.
+        if (!addChecked(newStart, oldDuration, newEnd)) {
+            return usageError("event duration is out of range");
+        }
+    }
+
+    if (newEnd < newStart) {
+        return usageError("--end is before --start");
+    }
+    event.startUtc = newStart;
+    event.endUtc = newEnd;
+
+    auto updated = db.updateEvent(event);
+    if (!updated) {
+        return reportError(updated.error());
+    }
+    std::fputs(formatId(event.id, format).c_str(), stdout);
+    return kExitOk;
+}
+
+int commandDuplicate(const Args &args, OutputFormat format, const FormatOptions &) {
+    if (args.id <= 0) {
+        return usageError("duplicate needs an event id");
+    }
+    if (args.startGiven && args.shiftGiven) {
+        return usageError("duplicate takes --start or --shift, not both");
+    }
+    if (args.endGiven || args.durationGiven) {
+        return usageError("duplicate keeps the original duration; use --start or --shift");
+    }
+
+    Db db;
+    if (const int rc = openDb(args, db); rc != kExitOk) {
+        return rc;
+    }
+    auto stored = db.getEvent(args.id);
+    if (!stored) {
+        return reportError(stored.error());
+    }
+    Event copy = stored.value();
+    copy.id = 0;
+    copy.createdUtc = 0;
+    copy.updatedUtc = 0;
+
+    const long long now = klend_ario::utcNowSeconds();
+    if (args.startGiven) {
+        const auto parsed = parseInstant(args.start, now);
+        if (!parsed) {
+            return usageError("--start is not a UTC instant");
+        }
+        const long long duration = copy.endUtc - copy.startUtc;
+        copy.startUtc = *parsed;
+        if (!addChecked(copy.startUtc, duration, copy.endUtc)) {
+            return usageError("event duration is out of range");
+        }
+    }
+    if (args.shiftGiven) {
+        const auto shift = parseSignedDuration(args.shift);
+        if (!shift) {
+            return usageError("--shift is not a duration (e.g. 1h, -30m)");
+        }
+        if (!addChecked(copy.startUtc, *shift, copy.startUtc) ||
+            !addChecked(copy.endUtc, *shift, copy.endUtc)) {
+            return usageError("--shift is out of range");
+        }
+    }
+
+    auto id = db.insertEvent(copy);
+    if (!id) {
+        return reportError(id.error());
+    }
+    std::fputs(formatId(id.value(), format).c_str(), stdout);
+    return kExitOk;
+}
+
+int commandList(const Args &args, OutputFormat format, const FormatOptions &options) {
+    const long long now = klend_ario::utcNowSeconds();
+
+    // A calendar's natural default is the current day, not the current second.
+    long long from = startOfDayUtc(now);
+    if (!args.from.empty()) {
+        const auto parsed = parseInstant(args.from, now);
+        if (!parsed) {
+            return usageError("--from is not a UTC instant (e.g. today, 2026-10-16, now)");
         }
         from = *parsed;
     }
     long long to = from + kWeekSeconds;
     if (!args.to.empty()) {
-        const auto parsed = klend_ario::parseIso8601(args.to);
+        const auto parsed = parseInstant(args.to, now);
         if (!parsed) {
-            return usageError("--to is not ISO-8601 UTC");
+            return usageError("--to is not a UTC instant (e.g. week, tomorrow, 2026-10-23)");
         }
         to = *parsed;
+    }
+    if (to < from) {
+        return usageError("--to is before --from");
     }
 
     Db db;
@@ -242,24 +417,11 @@ int commandList(const Args &args) {
     if (!events) {
         return reportError(events.error());
     }
-    if (args.json) {
-        std::printf("[");
-        for (size_t i = 0; i < events.value().size(); ++i) {
-            if (i != 0) {
-                std::printf(",");
-            }
-            printEventJson(events.value()[i]);
-        }
-        std::printf("]\n");
-    } else {
-        for (const Event &e : events.value()) {
-            printEventText(e);
-        }
-    }
+    std::fputs(formatEvents(events.value(), format, options).c_str(), stdout);
     return kExitOk;
 }
 
-int commandShow(const Args &args) {
+int commandShow(const Args &args, OutputFormat format, const FormatOptions &options) {
     if (args.id <= 0) {
         return usageError("show needs an event id");
     }
@@ -271,19 +433,11 @@ int commandShow(const Args &args) {
     if (!event) {
         return reportError(event.error());
     }
-    if (args.json) {
-        printEventJson(event.value());
-        std::printf("\n");
-    } else {
-        printEventText(event.value());
-        if (!event.value().notes.empty()) {
-            std::printf("    %s\n", event.value().notes.c_str());
-        }
-    }
+    std::fputs(formatEventDetail(event.value(), format, options).c_str(), stdout);
     return kExitOk;
 }
 
-int commandRemove(const Args &args) {
+int commandRemove(const Args &args, OutputFormat format, const FormatOptions &) {
     if (args.id <= 0) {
         return usageError("rm needs an event id");
     }
@@ -295,13 +449,16 @@ int commandRemove(const Args &args) {
     if (!removed) {
         return reportError(removed.error());
     }
+    // rm prints the id it removed so a pipeline can log what happened without
+    // re-reading the event, which `show` would no longer find.
+    std::fputs(formatId(args.id, format).c_str(), stdout);
     return kExitOk;
 }
 
 // Holidays are civil dates, not instants, and never need the database. The
 // core adapter turns the library's optional answers into arc::Result, so an
 // unknown country is the only error path here.
-int commandHolidays(const Args &args) {
+int commandHolidays(const Args &args, OutputFormat format, const FormatOptions &options) {
     int year = args.year;
     if (!args.yearGiven) {
         year = klend_ario::weekOfYearUtc(klend_ario::utcNowSeconds()).year;
@@ -314,21 +471,7 @@ int commandHolidays(const Args &args) {
     if (!calendar) {
         return reportError(calendar.error());
     }
-
-    if (args.json) {
-        std::printf("[");
-        for (size_t i = 0; i < calendar.value().size(); ++i) {
-            if (i != 0) {
-                std::printf(",");
-            }
-            printHolidayJson(calendar.value()[i]);
-        }
-        std::printf("]\n");
-    } else {
-        for (const Holiday &h : calendar.value()) {
-            std::printf("%s\n", h.toString().c_str());
-        }
-    }
+    std::fputs(formatHolidays(calendar.value(), format, options).c_str(), stdout);
     return kExitOk;
 }
 
@@ -339,20 +482,44 @@ int runCommand(const Args &args) {
         return usageError(args.error);
     }
 
-    switch (args.verb) {
-    case Verb::Help:
-        std::fputs(usage().c_str(), stdout);
+    if (args.verb == Verb::Help) {
+        if (args.helpTopic.empty()) {
+            std::fputs(usage().c_str(), stdout);
+            return kExitOk;
+        }
+        const std::string topic = usageFor(args.helpTopic);
+        if (topic.empty()) {
+            return usageError("unknown help topic: " + args.helpTopic);
+        }
+        std::fputs(topic.c_str(), stdout);
         return kExitOk;
+    }
+
+    OutputFormat format = OutputFormat::Text;
+    if (args.json) {
+        format = OutputFormat::Json;
+    } else if (!parseOutputFormat(args.format, format)) {
+        return usageError("unknown --format: " + args.format +
+                          " (text|table|json|csv|tsv)");
+    }
+    const FormatOptions options = formatOptionsOf(args);
+
+    switch (args.verb) {
     case Verb::Add:
-        return commandAdd(args);
+        return commandAdd(args, format, options);
+    case Verb::Edit:
+        return commandEdit(args, format, options);
+    case Verb::Duplicate:
+        return commandDuplicate(args, format, options);
     case Verb::List:
-        return commandList(args);
+        return commandList(args, format, options);
     case Verb::Show:
-        return commandShow(args);
+        return commandShow(args, format, options);
     case Verb::Remove:
-        return commandRemove(args);
+        return commandRemove(args, format, options);
     case Verb::Holidays:
-        return commandHolidays(args);
+        return commandHolidays(args, format, options);
+    case Verb::Help:
     case Verb::None:
         break;
     }

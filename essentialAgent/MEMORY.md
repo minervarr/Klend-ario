@@ -9,8 +9,11 @@ or re-litigate. If you are an agent: read this before proposing anything.*
 
 Klend-ario is a **privacy-first, AI-native personal calendar**: one encrypted
 SQLite file, synced by Syncthing, queryable through an MCP server, rendered as a
-weekly 16:9 view. Written natively in **C/C++**, running on **Linux and Android**
-(Windows kept buildable where it is free, but never the reason for a design).
+weekly 16:9 view. Written natively in **C/C++**, **desktop-first on Linux**.
+Android remains a planned target but is **deferred** (the 2026-10-16 notes put
+it after the desktop product because the platform is closed and hostile to FOSS
+distribution). Windows is kept buildable where it is free, but never the reason
+for a design.
 
 The full product design is [`../merged.md`](../merged.md) — *"Openseek — Final
 Plan (v3)"*. That document is the **product** plan; this folder is the **how-we-
@@ -20,6 +23,12 @@ folder wins on *how the code is organised*.
 The product is titled **Openseek** in that plan. The repository, the code
 namespace, and every CMake target are **Klend-ario / `klend_ario`**. Do not
 introduce an `openseek` identifier into the code; the name lives in prose only.
+
+The 2026-10-16 notes add a notes companion, a 10-hour automatic sleep window,
+G-SHOCK sleep/wake sync, NTP, and a storage-performance question. They are
+captured in [`REQUIREMENTS.md`](REQUIREMENTS.md); **capture is not
+implementation**. The holiday item in that note is already done — the C++17 port
+lives in `pe-holiday-calc`.
 
 ## 2. Why it exists
 
@@ -36,17 +45,33 @@ verified end to end. The **GUI comes last** and links the same core. Nothing in
 `core/` may depend on a frontend.
 
 ```
-Phase 0 — scaffold      CMake+Ninja, archive_engine submodule, pyz build tool, docs   ← you are here
+Phase 0 — scaffold      CMake+Ninja, archive_engine submodule, pyz build tool, docs
 Phase 1 — core          SQLite schema + storage layer + model, with tests
 Phase 2 — CLI MVP       add / list / show / rm  (the "app" until the GUI exists)
 Phase 3 — encryption    SQLite3MultipleCiphers + Syncthing sync policy
-Phase 4 — GUI           weekly 16:9 view (vk_canvas + app_shell)
+CLI power — stages 1-6  output/edit/time/query/intelligence/portability ← you are here
+Phase 4 — GUI           weekly 16:9 view (vk_canvas + app_shell)   ← PAUSED
 Phase 5 — MCP           local read/write server, minimal tool surface
 Phase 6 — alarms        libnotify + PipeWire / Android native
-Phase 7 — Android       platform layer, storage permissions
+Phase 7 — Android       platform layer, storage permissions   ← DEFERRED
+Phase 8 — notes         notes companion cross-referenced to events   ← post-MVP
+Phase 9 — sleep         10h automatic window, dynamic hide/show      ← post-MVP
+Phase 10 — G-SHOCK      sleep/wake alarm sync (research, optional)   ← post-MVP
+Gate — benchmark        SQLite vs JSON before any storage change
 ```
 
 **MVP = Phases 0–2.**
+
+**CLI before GUI (2026-10-17).** The desktop CLI is the product surface while
+the GUI waits: output formats, editing, relative time, query power, calendar
+intelligence, and import/export come first. Phase 4 is paused, not cancelled;
+resume it after the CLI stages in [`PLAN.md`](PLAN.md) unless the order changes
+again.
+
+**Desktop-first.** Phase 7 is deferred, not cancelled. No Android/JNI/NDK work
+until the desktop product is complete and that phase is explicitly reopened.
+The post-MVP items (notes, sleep scheduler, G-SHOCK, NTP) are recorded in
+[`REQUIREMENTS.md`](REQUIREMENTS.md); they do not move the current phase.
 
 ## 4. Decisions made (do not re-open without a reason)
 
@@ -68,9 +93,21 @@ These were decided for this repository specifically, on top of `merged.md`:
 | `pe-holiday-calc` | git submodule at `libs/firstparty/pe-holiday-calc` (Codeberg, pinned to the child's `master`); first-party C++17 holiday library, built with `add_subdirectory` (tests ON, example OFF). `klend_ario_core` links `pe_holiday_calc`; `core/src/holidays.cc` adapts its `std::optional` answers to `arc::Result` behind `core/include/klend_ario/holidays.hh` |
 | Tests | plain `assert()` binaries, registered with **CTest** |
 | CLI parsing | hand-rolled, `std::string_view` + `std::vector`, std-only |
+| CLI output | **text/table/json/csv/tsv**; rendering is pure (`cli/src/format.cc`), so the bytes are tested. `--json` remains an alias for `--format json` |
+| CLI time grammar | user-facing instants/durations are **pure core** (`klend_ario/timeexpr.hh`), UTC-only, resolved against an explicit `now` |
+| CLI edits | `edit <id>` changes **only supplied flags** (`*Given` in `Args`); moving `--start` preserves duration unless `--end`/`--duration` says otherwise |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
-| Frontends | `cli/` now, `gui/` later, `android/` later |
+| Frontends | `cli/` now, `gui/` later; Android later (deferred) |
+| Scope | **Desktop-first**: Linux is the active platform; Android is deferred (Phase 7) |
+| Time base | Unix seconds **UTC**; a day is the half-open interval `[0, 86400)` |
+| Local time | A **display** concern only; other zones may be shown, always alongside UTC. No per-event offset yet |
+| Time source | **NTP** at runtime (planned); local clock math is not a correctness source. Core has no network |
+| Sleep default | **10 hours**, generated automatically as a dynamic `sleep` event; hide/show automatically; still user-overridable |
+| Storage direction | **SQLite remains**; JSON is a benchmark candidate, not an adopted format. No rewrite without measured wins |
+| Encryption priority | Implemented (Phase 3) and kept; **not a gate** for new work. Removing it is a separate security decision |
+| Notes | Planned post-MVP companion; a note references an event by id, never copies it |
+| G-SHOCK | Research spike; feasibility depends on the watch model/BLE protocol; no promise yet |
 
 Product decisions (from `merged.md`, §1) that bind the code: events are
 **individual rows**; importance → hue (violet 0 → red 100); urgency → border
@@ -122,6 +159,19 @@ These are truths this workspace already paid for. Do not relearn them.
   builds the arg vector and calls it. That is what lets `cli/tests/e2e_test.cc`
   drive the REAL parse→dispatch→core path against a temp database — a
   parsing-only test cannot catch a verb that stopped reaching core.
+- **Output is data, not a side effect.** `printf` inside a command made the
+  user-visible contract untestable. Rendering pure strings (`format.cc`) means
+  `format_test` asserts exact text/table/json/csv/tsv bytes, including CSV
+  quoting and TSV escaping, with no stdout capture and no UTF-8 surprises in
+  the test harness.
+- **A partial edit needs "was it supplied?", not a default.** `--importance`
+  absent must mean "leave it", while `--importance 50` means "set it to 50".
+  `Args` therefore carries a `*Given` flag per editable field; defaults alone
+  silently overwrite data.
+- **Relative time is still calendar logic.** `today`, `week`, weekday names and
+  `+90m` live in core (`timeexpr`) with `now` as a parameter, not in the CLI and
+  not behind a clock call. That is what makes leap days, pre-epoch floors, and
+  overflow assertable without a flaky test or a timezone database.
 - **Migrations are additive and refused in the wrong direction.** The schema
   version lives in `meta.schema_version` and is checked on every open. Steps run
   upward only, in order. A database written by a *newer* build is **refused**
@@ -133,6 +183,23 @@ These are truths this workspace already paid for. Do not relearn them.
   rejected one. Rendering an instant into a *local* week is a UI concern for a
   later phase, and a per-event offset (for "09:00 wherever I am") is an explicit
   open item, not an oversight.
+- **A day is half-open.** 23:59:59 is the last named second (86,399 s after
+  midnight); the day's length is **86,400 s**, and the next midnight belongs to
+  the next day. Use `[start, end)` everywhere; an inclusive end silently
+  duplicates a second. The 2026-10-16 note's "86,399 s + 59 µs" is the inclusive
+  last instant, not a duration. The note's `[0; 8700⟩` bound is inconsistent
+  with both and stays an open question.
+- **UTC is the model; a timezone is a viewport.** Store and compare Unix
+  seconds UTC, format local only at the edge. NTP belongs to the runtime, never
+  to `core/` or to a test.
+- **Performance is a requirement, not a license to guess.** SQLite is the
+  measured incumbent; a JSON rewrite must beat it on the real operations (open,
+  weekly range query, insert/update, file size, sync conflicts) before it is
+  considered. Encryption is already in place; measure its cost before treating
+  it as the bottleneck, and never remove it silently.
+- **Captured is not implemented.** The notes app, the 10-hour sleep scheduler,
+  G-SHOCK sync, and NTP are recorded requirements; they do not move the current
+  phase.
 - **Vendor what must build identically everywhere.** sqlite3 is vendored rather
   than found on the system so Linux and Android compile the same version with no
   package to install — first the plain amalgamation (Phase 0), now the
@@ -152,6 +219,14 @@ These are truths this workspace already paid for. Do not relearn them.
 - **`vk_canvas`** — the Vulkan 2D canvas + text engine. The GUI renderer.
 - **`merged.md`** — the product plan. **`git_wrapper`** — the commit tool at the
   repo root (see `AGENTS.md`).
+- **NTP** — network time source planned for the runtime. It is never used by a
+  test and never reaches `core/`.
+- **Sleep window** — the auto-generated `sleep` block, default **10 h**, dynamic
+  (hidden/shown automatically by the scheduler).
+- **G-SHOCK sync** — planned export of sleep/wake alarms to a Casio watch over
+  its BLE protocol. A research item, not a dependency.
+- **Notes companion** — a future notes surface whose notes reference calendar
+  events by `events.id`; it does not copy event data.
 
 ## 7. Encryption and sync (Phase 3)
 
@@ -231,3 +306,21 @@ enough to keep, because both were decided against an obvious alternative.
   hard way: the first backend no-op'd silently.
 - **PipeWire sound is NOT implemented yet.** Notifications fire; the audible
   half of `merged.md` §6 is an open gap, named rather than faked.
+
+## 10. Captured requirements (2026-10-16)
+
+The full note is [`REQUIREMENTS.md`](REQUIREMENTS.md). What binds the code now:
+
+- **Desktop first.** Android work stops until Phase 7 is explicitly reopened.
+- **UTC and half-open days.** The model already does this (`[0, 86400)`); keep
+  it, and keep the 80,000 / 81,000 / 1,000-second vectors in `event_test`.
+- **Performance over speculation.** SQLite stays until a benchmark says
+  otherwise; encryption stays unless a separate decision removes it.
+- **Sleep is dynamic.** Default 10 hours; the block can hide/show automatically.
+- **Notes link to events.** A note references `events.id`; it never duplicates
+  the event.
+- **G-SHOCK is research.** No protocol, Bluetooth dependency, or promise yet.
+- **NTP is runtime.** No network in `core/` or in tests.
+
+The holiday item is already done: `pe-holiday-calc` is the C++17 port of the
+original Rust generator, consumed through `klend_ario/holidays.hh`.

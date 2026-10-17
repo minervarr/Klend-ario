@@ -32,7 +32,8 @@ def current_target() -> str:
         raise BuildError("Windows is not supported by this tool yet (Linux-only for now)")
     if sys.platform == "darwin":
         raise BuildError(
-            "macOS is not supported: Klend-ario ships for Linux and Android"
+            "macOS is not supported: Klend-ario is desktop-first for Linux; "
+            "Android is deferred"
         )
     return "linux"
 

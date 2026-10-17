@@ -69,16 +69,60 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Layer | Test lives in | Links | Fixture |
 |---|---|---|---|
 | Pure model / parsing (`event`, ISO 8601, priority→colour) | `core/tests/` | the one source file, nothing else | none |
+| UTC / day arithmetic (`parseIso8601`, `formatIso8601`, half-open day) | `core/tests/event_test.cc` | `src/event.cc` | none |
+| User-facing instants/durations (`today`, `week+7d`, `90m`) | `core/tests/timeexpr_test.cc` | `src/timeexpr.cc src/event.cc` | none |
 | Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB |
 | CLI argument parsing | `cli/tests/` | `args.cc` only | none |
-| CLI end-to-end (`add`/`list`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
+| CLI rendering (text/table/json/csv/tsv) | `cli/tests/format_test.cc` | `format.cc src/event.cc` | none |
+| CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
+
+### Time and day model
+
+`event_test` pins the vectors from the 2026-10-16 notes:
+
+- 80,000 s after midnight UTC = **22:13:20**.
+- 81,000 s after midnight UTC = **22:30:00**.
+- The gap is **1,000 s = 16 min 40 s**.
+- 23:59:59 is **86,399 s** after midnight; the next midnight is **86,400 s**
+  later and belongs to the next day. The store is half-open `[0, 86400)` and has
+  whole seconds only — do not assert microseconds until a column exists.
+- No live NTP/network in tests, ever. NTP is a runtime frontend concern.
+
+### CLI time expressions
+
+`timeexpr_test` pins the grammar the CLI exposes; `now` is a parameter, so no
+test reads the clock:
+
+- `today` is 00:00 UTC of the day containing `now`; `tomorrow`/`yesterday` are
+  ±86,400 s. Pre-epoch input floors to the day, never truncates toward zero.
+- `week` is the Sunday that starts the current week; `next-week`/`last-week`
+  move by seven days (the product week starts Sunday, `merged.md` §1).
+- `friday` on a Friday is **today**, not a week later; otherwise it is the next
+  occurrence at 00:00 UTC.
+- `today+2h`, `week-1d` and bare `+90m`/`-1d` resolve against `now`.
+- Durations are `90m`, `2h`, `1h30m`, `1d`, `1w`, or a bare number of seconds.
+  Overflow and unknown units are rejected (`Ok`/`nullopt`, never wrapped).
+
+### CLI rendering
+
+`format_test` asserts the actual bytes for every format, so the user-visible
+contract is tested without capturing stdout:
+
+- text is one line per event (`id  start  end  title  [type]  [hidden]`);
+- json is the object used by the MCP/tooling, and `list` emits an array;
+- csv quotes a field containing `,`/`"`/newline and doubles embedded quotes;
+- tsv escapes `\`, tab and newline so a record stays on one line;
+- table right-aligns numeric columns and keeps widths across a headerless run.
+
+An end-to-end test still drives parsing → command → core → SQLite with a temp
+DB. Exit codes are the contract there: `0` ok, `1` runtime error, `2` usage.
 
 `holidays_test` tests the **boundary**, not the calendar: the child's own suites
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 18 suites, not 11. The CLI's
+That is why the parent currently reports 20 suites, not 11. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

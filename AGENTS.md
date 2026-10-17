@@ -19,6 +19,14 @@ The non-negotiables, so they apply even before you read further:
   `libs/firstparty/pe-holiday-calc`. Core exposes them through
   `klend_ario/holidays.hh` and adapts `std::optional` to `arc::Result`; never
   duplicate date math, and never edit the submodule from the parent.
+- **Desktop-first** — Linux is the only active platform; Android is deferred,
+  so no JNI/NDK/gradle work until Phase 7 is reopened.
+- **UTC and half-open days** — store Unix seconds UTC; a day is `[0, 86400)`;
+  local zones are display-only, and NTP belongs to the runtime.
+- **Performance first, but measured** — SQLite stays until a benchmark beats it;
+  JSON is a candidate, not a decision.
+- **Captured requirements** — notes, 10 h dynamic sleep, G-SHOCK sync, and NTP
+  are planned post-MVP; see `essentialAgent/REQUIREMENTS.md`. Do not build ahead.
 - **Commit/push with `./git_wrapper`** — submodules first, single identity, no
   `Co-Authored-By` trailers.
 - **Stay in the current phase.** See `essentialAgent/PLAN.md`.

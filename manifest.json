@@ -1,11 +1,20 @@
 {
   "name": "klend_ario",
-  "description": "Privacy-first, AI-native personal calendar: one encrypted SQLite file, synced, queryable, rendered as a weekly view.",
+  "description": "Privacy-first, AI-native personal calendar: one encrypted SQLite file, synced, queryable, rendered as a weekly view. Desktop-first; Android deferred.",
   "version": "0.1.0",
-  "platforms": ["linux", "android"],
+  "platforms": ["linux"],
+  "deferred_platforms": ["android"],
   "language": "C++17",
+  "time": "unix-seconds-utc",
+  "day": "[0,86400)",
   "build": {
     "linux": "scripts/build.sh"
   },
-  "database": "sqlite3"
+  "database": "sqlite3",
+  "storage": {
+    "engine": "sqlite3",
+    "encryption": "sqlite3mc-chacha20",
+    "json": "benchmark-candidate"
+  },
+  "planned": ["notes", "sleep-scheduler-10h", "gshock-sync", "ntp"]
 }

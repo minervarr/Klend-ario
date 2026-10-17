@@ -22,6 +22,10 @@ void testNoArgsIsHelp() {
 
 void testVerbs() {
     assert(parse({"add"}).verb == Verb::Add);
+    assert(parse({"edit"}).verb == Verb::Edit);
+    assert(parse({"update"}).verb == Verb::Edit);
+    assert(parse({"duplicate"}).verb == Verb::Duplicate);
+    assert(parse({"copy"}).verb == Verb::Duplicate);
     assert(parse({"list"}).verb == Verb::List);
     assert(parse({"show"}).verb == Verb::Show);
     assert(parse({"rm"}).verb == Verb::Remove);
@@ -91,6 +95,89 @@ void testPositionalId() {
     const Args rm = parse({"rm", "7"});
     assert(rm.error.empty());
     assert(rm.id == 7);
+
+    const Args edit = parse({"edit", "9"});
+    assert(edit.error.empty());
+    assert(edit.verb == Verb::Edit && edit.id == 9);
+
+    const Args duplicate = parse({"duplicate", "11"});
+    assert(duplicate.error.empty());
+    assert(duplicate.verb == Verb::Duplicate && duplicate.id == 11);
+}
+
+void testPositionalTitle() {
+    const Args a = parse({"add", "Standup", "--start", "today", "--duration", "30m"});
+    assert(a.error.empty());
+    assert(a.verb == Verb::Add);
+    assert(a.titleGiven && a.title == "Standup");
+    assert(a.startGiven && a.start == "today");
+    assert(a.durationGiven && a.duration == "30m");
+
+    // A second positional would be ambiguous: --title or the bare form, never
+    // both.
+    assert(!parse({"add", "One", "Two"}).error.empty());
+    assert(!parse({"add", "--title", "One", "Two"}).error.empty());
+}
+
+void testGivenFlags() {
+    // The difference that makes `edit` possible: absent means "leave alone".
+    const Args untouched = parse({"edit", "5"});
+    assert(untouched.error.empty());
+    assert(!untouched.titleGiven);
+    assert(!untouched.startGiven);
+    assert(!untouched.endGiven);
+    assert(!untouched.durationGiven);
+    assert(!untouched.typeGiven);
+    assert(!untouched.importanceGiven);
+    assert(!untouched.urgencyGiven);
+    assert(!untouched.alarmOffsetGiven);
+    assert(!untouched.notesGiven);
+    assert(!untouched.hiddenGiven);
+    assert(!untouched.shiftGiven);
+
+    const Args set = parse({"edit", "5", "--title", "New", "--importance", "50", "--urgency", "0",
+                            "--alarm-offset", "60", "--hidden", "--notes", "n"});
+    assert(set.titleGiven && set.title == "New");
+    assert(set.importanceGiven && set.importance == 50);
+    assert(set.urgencyGiven && set.urgency == 0);
+    assert(set.alarmOffsetGiven && set.alarmOffset == 60);
+    assert(set.hiddenGiven && set.hidden);
+    assert(set.notesGiven && set.notes == "n");
+
+    const Args unhide = parse({"edit", "5", "--unhide"});
+    assert(unhide.hiddenGiven && !unhide.hidden);
+
+    const Args clear = parse({"edit", "5", "--clear-notes"});
+    assert(clear.notesGiven && clear.clearNotes && clear.notes.empty());
+}
+
+void testShiftAndFormat() {
+    const Args shift = parse({"edit", "9", "--shift", "-30m"});
+    assert(shift.error.empty());
+    assert(shift.shiftGiven && shift.shift == "-30m");
+
+    const Args format = parse({"list", "--format", "csv", "--no-header"});
+    assert(format.error.empty());
+    assert(format.format == "csv");
+    assert(format.noHeader);
+    // The name is validated by the command; parsing only carries it.
+    assert(parse({"list", "--format", "xml"}).error.empty());
+}
+
+void testHelpTopics() {
+    const Args named = parse({"help", "edit"});
+    assert(named.verb == Verb::Help && named.helpTopic == "edit");
+
+    const Args flag = parse({"edit", "--help"});
+    assert(flag.verb == Verb::Help && flag.helpTopic == "edit");
+
+    const Args shortFlag = parse({"add", "-h"});
+    assert(shortFlag.verb == Verb::Help && shortFlag.helpTopic == "add");
+}
+
+void testIntegerOverflowRejected() {
+    assert(!parse({"add", "--importance", "99999999999999999999"}).error.empty());
+    assert(!parse({"add", "--urgency", "-99999999999999999999"}).error.empty());
 }
 
 void testHolidaysVerb() {
@@ -140,6 +227,11 @@ int main() {
     testDbAndRangeFlags();
     testKeyFileFlag();
     testPositionalId();
+    testPositionalTitle();
+    testGivenFlags();
+    testShiftAndFormat();
+    testHelpTopics();
+    testIntegerOverflowRejected();
     testHolidaysVerb();
     testUsageErrors();
     std::printf("args_test: all assertions passed\n");

@@ -10,7 +10,8 @@ live in `essentialAgent/AGENTS.md`; this is the step-by-step procedure.
 
 ## Before touching code
 
-1. Read `essentialAgent/MEMORY.md` (what/why/decisions) and
+1. Read `essentialAgent/MEMORY.md` (what/why/decisions),
+   `essentialAgent/REQUIREMENTS.md` (captured 2026-10-16 requirements), and
    `essentialAgent/AGENTS.md` (invariants).
 2. Check `essentialAgent/PLAN.md` for the current phase. Do not build ahead of
    it without being asked.
@@ -33,6 +34,9 @@ Tests are plain `assert()` binaries registered with CTest (`TESTING.md`).
 
 Work inside-out: model → storage → CLI. Never put logic in the CLI.
 
+0. **Time input** — if the feature accepts a date, instant or duration, extend
+   `core/include/klend_ario/timeexpr.hh` (and `timeexpr_test`) rather than
+   parsing it in `cli/`.
 1. **Decide where it lives.** Business logic in `core/`; only argument parsing
    and printing in `cli/`. `core/` must stay portable (no OS headers, no JNI).
 2. **Model** — add/extend a header in `core/include/klend_ario/`. Return
@@ -45,8 +49,9 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
    **in-memory** DB (`:memory:`) for storage tests. Make it fail first, then make
    it pass.
 5. **CLI** — parse any new flags in `cli/src/args.cc` (std-only, unit-tested in
-   `cli/tests/args_test.cc`), then call the core function from `cli/src/main.cc`
-   and print. No logic here.
+   `cli/tests/args_test.cc`), call the core function from
+   `cli/src/commands.cc`, and render through `cli/src/format.cc` (test the bytes
+   in `format_test` when output changes). No logic here.
 6. **Prove it.** `ninja -C build && ctest --test-dir build --output-on-failure`
    must be green, and the manual CLI check must behave.
 7. **Record** — if you made a decision or found a gotcha, write it into
@@ -64,3 +69,12 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
   `Err` while "no holiday today" is `Ok(nullopt)`.
 - Do not add a dependency without recording the decision.
 - Do not start the GUI, MCP, or encryption before their phase.
+- **Desktop-first.** Do not add Android/JNI/NDK/gradle work before Phase 7 is
+  reopened.
+- **UTC + half-open days.** Store Unix seconds UTC; the interval is
+  `[0, 86400)`. Local zones are display-only; never put `<ctime>`/local-zone
+  logic or NTP in `core/`.
+- **No speculative storage rewrite.** SQLite stays until a benchmark proves a
+  JSON store faster on the real operations; encryption is not a blocker.
+- **Captured ≠ built.** Notes, the 10 h sleep scheduler, G-SHOCK sync, and NTP
+  are in `REQUIREMENTS.md`; do not implement them ahead of their phase.

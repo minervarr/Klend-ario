@@ -5,6 +5,7 @@
   "instructions": [
     "essentialAgent/AGENTS.md",
     "essentialAgent/MEMORY.md",
+    "essentialAgent/REQUIREMENTS.md",
     "essentialAgent/TESTING.md",
   ],
   // Reusable workflows (essentialAgent/skills/klend-ario/SKILL.md).

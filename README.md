@@ -2,11 +2,20 @@
 
 A privacy-first, AI-native personal calendar: one encrypted SQLite file, synced
 by Syncthing, queried through an MCP server, rendered as a weekly 16:9 view.
-Written natively in **C++17**, running on Linux and Android.
+Written natively in **C++17**, **desktop-first on Linux**; Android is deferred.
 
 The product design is [`merged.md`](merged.md) (*"Openseek — Final Plan (v3)"*).
 The how-we-build-it manual — what, why, rules, plan, testing — lives in
 [`essentialAgent/`](essentialAgent/README.md). **Read that first.**
+
+## Scope and captured requirements
+
+The 2026-10-16 product notes are recorded in
+[`essentialAgent/REQUIREMENTS.md`](essentialAgent/REQUIREMENTS.md): desktop
+first, UTC with local time as a display, a notes companion keyed to events, a
+10-hour automatic sleep window, G-SHOCK sleep/wake sync (research), NTP, and the
+SQLite-vs-JSON performance question. SQLite remains the store until a benchmark
+says otherwise; encryption stays in place.
 
 ## Build
 
@@ -35,9 +44,17 @@ ctest --test-dir build --output-on-failure
 
 ```bash
 ./build/cli/klend_ario_cli --help
-./build/cli/klend_ario_cli holidays --year 2026          # Peru's feriados
-./build/cli/klend_ario_cli holidays --year 2026 --json   # machine-readable
+./build/cli/klend_ario_cli help add
+./build/cli/klend_ario_cli add "Standup" --start today+9h --duration 30m
+./build/cli/klend_ario_cli list --from today --to week --format table
+./build/cli/klend_ario_cli edit 1 --shift 1h
+./build/cli/klend_ario_cli holidays --year 2026 --format csv
 ```
+
+Instants are UTC. Absolute ISO-8601 (`2026-10-16T09:00:00Z`), date-only
+(`2026-10-16`), relative words (`now`, `today`, `tomorrow`, `week`,
+`sunday..saturday`) and offsets (`today+2h`, `+90m`) all work. `--format` is
+`text`, `table`, `json`, `csv`, or `tsv`; `--json` remains an alias.
 
 ## Layout
 

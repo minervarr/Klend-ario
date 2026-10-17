@@ -13,12 +13,68 @@ as work lands; this file is the tracker.*
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
-| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **in progress** — geometry done; renderer pending SDK |
+| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **paused** — geometry done; CLI is the priority (2026-10-17) |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
 | 6 | Alarms — libnotify + PipeWire / Android native | **done** (notify; PipeWire sound is a named gap) |
-| 7 | Android platform layer + storage permissions | **not started** — needs the NDK/SDK (see `android/README.md`) |
+| 7 | Android platform layer + storage permissions | **deferred** — desktop-first (2026-10-16); see `REQUIREMENTS.md` |
+| 8 | Notes companion — notes cross-referenced to events | **not started** — post-MVP |
+| 9 | Sleep scheduler — 10 h automatic window, dynamic visibility | **not started** — post-MVP |
+| 10 | G-SHOCK sync — sleep/wake alarms over BLE | **not started** — research, optional |
+| — | Storage benchmark — SQLite vs JSON gate | **open** — before any storage change |
 
 **MVP = 0–2.** Detail for phases 3–7 is in [`../merged.md`](../merged.md).
+
+**Desktop-first.** Phase 7 is deferred, not cancelled. No Android/JNI/NDK work
+until the desktop product is complete and that phase is explicitly reopened.
+Phases 8–10 come from the 2026-10-16 notes and are **not** permitted to move the
+current phase.
+
+---
+
+## Captured requirements (2026-10-16)
+
+Source: [`REQUIREMENTS.md`](REQUIREMENTS.md). These are recorded, not built.
+
+- [x] Holiday generation is the C++17 port of the original Rust code —
+      `libs/firstparty/pe-holiday-calc`, consumed through `klend_ario/holidays.hh`.
+- [x] Desktop-first scope recorded — Android/Phase 7 is deferred.
+- [x] UTC is the stored time base; local zones are display-only.
+- [x] Half-open day model `[0, 86400)` — already what `event.cc` does;
+      `event_test` now pins 80,000 s = 22:13:20, 81,000 s = 22:30:00, and
+      Δ 1,000 s = 16 min 40 s.
+- [ ] Notes companion — note ↔ event reference by id (Phase 8).
+- [ ] Sleep scheduler — 10 h default, auto-generated dynamic block (Phase 9).
+- [ ] G-SHOCK sleep/wake sync — research feasibility first (Phase 10).
+- [ ] NTP runtime time source — frontend/runtime, no core dependency.
+- [ ] Storage benchmark — SQLite vs JSON; no rewrite before a measured win.
+
+---
+
+## CLI hardening (before GUI, started 2026-10-17)
+
+The desktop CLI is the product surface until the GUI is worth resuming. The
+work is staged so each layer is useful and tested on its own; logic stays in
+`core/`, rendering stays pure and in `cli/src/format.cc`.
+
+- [x] **Stage 1 — output foundation.** `--format text|table|json|csv|tsv`
+      (`--json` remains an alias), `--no-header`, `help <verb>` and
+      `<verb> --help`. Rendering moved out of `printf` calls into pure
+      `format.cc` functions, so `format_test` asserts the bytes.
+- [x] **Stage 2 — edit and field ergonomics.** `edit <id>` (partial update via
+      `*Given` flags), `duplicate <id>`, `--duration`, `--shift`,
+      `--clear-notes`, `--hidden`/`--unhide`, and a positional `add` title.
+- [x] **Stage 3 — relative time.** Pure `core/timeexpr` grammar: `now`,
+      `today`/`tomorrow`/`yesterday`, `week`/`next-week`/`last-week`,
+      `sunday..saturday`, `today+2h`, `+90m`, and durations `90m`/`1h30m`/`1d`.
+- [ ] **Stage 4 — query power.** Search/type/importance filters, sort,
+      limit/offset; `today`, `week`, `next`, `agenda`, `search`.
+- [ ] **Stage 5 — intelligence.** `conflicts`, `free`, `alarms`, `stats`,
+      `doctor`.
+- [ ] **Stage 6 — portability.** `export`/`import` (csv/jsonl/ics export),
+      `completion`.
+
+Stages 4–6 are planned, not built. GUI Phase 4 resumes after these unless the
+order changes again — see the status log.
 
 ---
 
@@ -34,8 +90,10 @@ and test immediately.
       pinning `c44bf97`).
 - [x] `.gitignore` — `build/`, `build_*/`, `__pycache__/`, `*.py[cod]`,
       `scripts/*.pyz`, `compile_commands.json`, editor junk, Python venv.
-- [x] `manifest.json` — `name: klend_ario`, version, description, platforms,
-      `language: C++17`, `build: {linux: scripts/build.sh}`.
+- [x] `manifest.json` — `name: klend_ario`, version, description,
+      `platforms: [linux]`, `deferred_platforms: [android]`, `language: C++17`,
+      `time: unix-seconds-utc`, `day: [0,86400)`,
+      `build: {linux: scripts/build.sh}`.
 - [x] `README.md` — build, run, test; points at `essentialAgent/`.
 
 ### Build system
@@ -104,7 +162,7 @@ ctest --test-dir build --output-on-failure      # all pass
 - [x] `core/tests/holidays_test.cc` asserts a known 2026 Peru calendar,
       case/trimmed lookup, the *día no laborable* negative, and the
       unknown-country error.
-- [x] The child's seven suites run through the parent's CTest (18 suites
+- [x] The child's seven suites run through the parent's CTest (20 suites
       total), so a parent `ctest` also protects the library.
 - [ ] Android NDK build of the child — open; no NDK/SDK in this environment.
 
@@ -113,6 +171,29 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **CLI hardening, Stages 1–3 (2026-10-17).** The CLI is now the priority;
+  GUI Phase 4 is paused, not cancelled. Added a pure rendering layer
+  (`cli/src/format.{hh,cc}`, `format_test`) covering text/table/json/csv/tsv and
+  `--no-header`; `--format` plus the existing `--json` alias; per-verb help
+  (`help add`, `edit --help`). Added `edit <id>` with `*Given` partial updates,
+  `duplicate <id>`, `add --duration` (and a positional title), `edit --shift`,
+  `--clear-notes`, `--hide`/`--unhide`, and duration-preserving `--start`.
+  Added the pure `core/timeexpr` grammar (`timeexpr_test`): ISO/date-only,
+  `today`/`tomorrow`/`week`, weekday names, `today+2h`, `+90m`, and durations.
+  `list` now defaults to 00:00 UTC today + 7 days. 20 CTest suites pass; the
+  new tests fail without the features. No submodule change.
+
+- **Requirements captured from the 2026-10-16 notes.** Added
+  `essentialAgent/REQUIREMENTS.md` (verbatim source + normalized requirements)
+  and wired it into the manual and OpenCode. Locked **desktop-first** (Android
+  deferred), **UTC + half-open days** (`[0, 86400)`), a **10-hour dynamic sleep
+  window**, a **notes companion keyed to events**, **G-SHOCK research**, and
+  **NTP as runtime-only**. Storage stays **SQLite**: JSON is a benchmark
+  candidate, not a decision; encryption stays implemented but is not a gate.
+  `event_test` now pins the day-second vectors (80,000 s = 22:13:20, 81,000 s =
+  22:30:00, 1,000 s = 16:40). No production logic or submodule changed. See
+  `REQUIREMENTS.md`.
 
 - **CLI gained a `holidays` verb.** `klend_ario_cli holidays [--country PE]
   [--year N] [--json]` calls `klend_ario::holidaysFor` through core and prints

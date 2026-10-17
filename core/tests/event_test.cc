@@ -48,6 +48,24 @@ static void testPreEpoch() {
     assert(formatIso8601(-1) == "1969-12-31T23:59:59Z");
 }
 
+static void testSecondsOfDayModel() {
+    // The 2026-10-16 notes' worked example, pinned as a vector. A civil day is
+    // HALF-OPEN [00:00:00, next 00:00:00): the length is 86,400 s, while
+    // 23:59:59 is the last named second at 86,399 s after midnight.
+    const auto midnight = parseIso8601("2026-10-16T00:00:00Z");
+    const auto late = parseIso8601("2026-10-16T22:13:20Z");
+    const auto halfPast = parseIso8601("2026-10-16T22:30:00Z");
+    const auto lastSecond = parseIso8601("2026-10-16T23:59:59Z");
+    const auto nextMidnight = parseIso8601("2026-10-17T00:00:00Z");
+    assert(midnight && late && halfPast && lastSecond && nextMidnight);
+
+    assert(*late - *midnight == 80000);       // 22:13:20
+    assert(*halfPast - *midnight == 81000);   // 22:30:00
+    assert(*halfPast - *late == 1000);        // 00:16:40
+    assert(*lastSecond - *midnight == 86399); // last named second
+    assert(*nextMidnight - *midnight == 86400); // the day's LENGTH
+}
+
 static void testTypeNames() {
     EventType type = EventType::Event;
     assert(eventTypeFromName("sleep", type) && type == EventType::Sleep);
@@ -143,6 +161,7 @@ int main() {
     testRejectsGarbage();
     testLeapDay();
     testPreEpoch();
+    testSecondsOfDayModel();
     testTypeNames();
     testImportanceHue();
     testUrgencyBorder();

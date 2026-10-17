@@ -1,5 +1,7 @@
 #include "args.hh"
 
+#include <limits>
+
 namespace klend_ario::cli {
 namespace {
 
@@ -24,10 +26,44 @@ bool parseLong(std::string_view text, long long &out) {
         if (c < '0' || c > '9') {
             return false;
         }
-        value = value * 10 + (c - '0');
+        const int digit = c - '0';
+        if (value > (std::numeric_limits<long long>::max() - digit) / 10) {
+            return false;
+        }
+        value = value * 10 + digit;
     }
     out = negative ? -value : value;
     return true;
+}
+
+const char *verbName(Verb verb) {
+    switch (verb) {
+    case Verb::Add:
+        return "add";
+    case Verb::Edit:
+        return "edit";
+    case Verb::Duplicate:
+        return "duplicate";
+    case Verb::List:
+        return "list";
+    case Verb::Show:
+        return "show";
+    case Verb::Remove:
+        return "rm";
+    case Verb::Holidays:
+        return "holidays";
+    case Verb::Help:
+        return "help";
+    case Verb::None:
+        break;
+    }
+    return "";
+}
+
+// Which verbs take a positional id. Add takes a title; help takes a topic.
+bool takesId(Verb verb) {
+    return verb == Verb::Show || verb == Verb::Remove || verb == Verb::Edit ||
+           verb == Verb::Duplicate;
 }
 
 } // namespace
@@ -49,6 +85,10 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
         const std::string_view verb = argv[i++];
         if (verb == "add") {
             a.verb = Verb::Add;
+        } else if (verb == "edit" || verb == "update") {
+            a.verb = Verb::Edit;
+        } else if (verb == "duplicate" || verb == "copy") {
+            a.verb = Verb::Duplicate;
         } else if (verb == "list") {
             a.verb = Verb::List;
         } else if (verb == "show") {
@@ -85,7 +125,9 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
                 return false;
             }
             long long parsed = 0;
-            if (!parseLong(argv[++i], parsed)) {
+            if (!parseLong(argv[++i], parsed) ||
+                parsed < std::numeric_limits<int>::min() ||
+                parsed > std::numeric_limits<int>::max()) {
                 a.error = std::string("bad value for ") + name + ": " + std::string(argv[i]);
                 return false;
             }
@@ -95,6 +137,8 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
 
         if (token == "--json") {
             a.json = true;
+        } else if (token == "--no-header") {
+            a.noHeader = true;
         } else if (token == "--db") {
             if (!takeValue(a.dbPath, "--db")) {
                 return a;
@@ -103,22 +147,40 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!takeValue(a.keyFile, "--key-file")) {
                 return a;
             }
+        } else if (token == "--format") {
+            if (!takeValue(a.format, "--format")) {
+                return a;
+            }
         } else if (token == "--title") {
             if (!takeValue(a.title, "--title")) {
                 return a;
             }
+            a.titleGiven = true;
         } else if (token == "--start") {
             if (!takeValue(a.start, "--start")) {
                 return a;
             }
+            a.startGiven = true;
         } else if (token == "--end") {
             if (!takeValue(a.end, "--end")) {
                 return a;
             }
+            a.endGiven = true;
+        } else if (token == "--duration") {
+            if (!takeValue(a.duration, "--duration")) {
+                return a;
+            }
+            a.durationGiven = true;
+        } else if (token == "--shift") {
+            if (!takeValue(a.shift, "--shift")) {
+                return a;
+            }
+            a.shiftGiven = true;
         } else if (token == "--type") {
             if (!takeValue(a.type, "--type")) {
                 return a;
             }
+            a.typeGiven = true;
         } else if (token == "--from") {
             if (!takeValue(a.from, "--from")) {
                 return a;
@@ -140,38 +202,63 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!takeInt(a.importance, "--importance")) {
                 return a;
             }
+            a.importanceGiven = true;
         } else if (token == "--urgency") {
             if (!takeInt(a.urgency, "--urgency")) {
                 return a;
             }
+            a.urgencyGiven = true;
         } else if (token == "--alarm-offset") {
             if (!takeInt(a.alarmOffset, "--alarm-offset")) {
                 return a;
             }
+            a.alarmOffsetGiven = true;
         } else if (token == "--notes") {
             if (!takeValue(a.notes, "--notes")) {
                 return a;
             }
+            a.notesGiven = true;
+        } else if (token == "--clear-notes") {
+            a.notes.clear();
+            a.notesGiven = true;
+            a.clearNotes = true;
         } else if (token == "--hidden") {
             a.hidden = true;
+            a.hiddenGiven = true;
+        } else if (token == "--unhide") {
+            a.hidden = false;
+            a.hiddenGiven = true;
         } else if (token == "-h" || token == "--help") {
+            if (a.verb != Verb::Help) {
+                a.helpTopic = verbName(a.verb);
+            }
             a.verb = Verb::Help;
         } else if (isOption(token)) {
             a.error = "unknown option: " + std::string(token);
             return a;
-        } else {
-            // A positional argument. Only show/rm take one: the id.
-            if (a.verb == Verb::Show || a.verb == Verb::Remove) {
-                long long parsed = 0;
-                if (!parseLong(token, parsed)) {
-                    a.error = "not an id: " + std::string(token);
-                    return a;
-                }
-                a.id = parsed;
-            } else {
+        } else if (a.verb == Verb::Help) {
+            a.helpTopic = std::string(token);
+        } else if (takesId(a.verb)) {
+            long long parsed = 0;
+            if (!parseLong(token, parsed)) {
+                a.error = "not an id: " + std::string(token);
+                return a;
+            }
+            if (a.id != 0) {
                 a.error = "unexpected argument: " + std::string(token);
                 return a;
             }
+            a.id = parsed;
+        } else if (a.verb == Verb::Add) {
+            if (a.titleGiven) {
+                a.error = "unexpected argument: " + std::string(token);
+                return a;
+            }
+            a.title = std::string(token);
+            a.titleGiven = true;
+        } else {
+            a.error = "unexpected argument: " + std::string(token);
+            return a;
         }
     }
 
@@ -184,37 +271,81 @@ std::string usage() {
            "usage: klend_ario_cli <command> [options]\n"
            "\n"
            "commands:\n"
-           "  add     create an event\n"
-           "  list    list events overlapping a time range\n"
-           "  show    show one event by id\n"
-           "  rm      delete one event by id\n"
-           "  holidays  list a country's public holidays for a year\n"
+           "  add        create an event\n"
+           "  edit       change fields of an event\n"
+           "  duplicate  copy an event\n"
+           "  list       list events overlapping a time range\n"
+           "  show       show one event by id\n"
+           "  rm         delete one event by id\n"
+           "  holidays   list a country's public holidays for a year\n"
+           "  help       show help (help <command>)\n"
            "\n"
-           "add options:\n"
-           "  --title T          event title (required)\n"
-           "  --start ISO        start, e.g. 2026-10-16T09:00:00Z (required)\n"
-           "  --end ISO          end (required)\n"
-           "  --type T           event|sleep|wake|alarm (default event)\n"
-           "  --importance N     0..100, hue (default 50)\n"
-           "  --urgency N        0..100, border (default 50)\n"
-           "  --alarm-offset N   seconds before start (default 0)\n"
-           "  --notes TEXT       a free-form note\n"
-           "  --hidden           hide it in the weekly view (sleep blocks)\n"
-           "\n"
-           "list options:\n"
-           "  --from ISO         lower bound (default: now)\n"
-           "  --to ISO           upper bound (default: from + 7 days)\n"
-           "\n"
-           "holidays options:\n"
-           "  --country CC       ISO country code (default PE)\n"
-           "  --year N           year 1..9999 (default: current UTC year)\n"
+           "time expressions are UTC:\n"
+           "  2026-10-16T09:00:00Z  2026-10-16  now  today  tomorrow  yesterday\n"
+           "  week  next-week  last-week  sunday .. saturday\n"
+           "  +90m  -1d  today+2h  week-1d\n"
+           "durations: 90m  2h  1h30m  1d  1w   (a bare number means seconds)\n"
            "\n"
            "common options:\n"
            "  --db PATH          database file (default: the app's state dir)\n"
            "  --key-file PATH    read the database passphrase from this file\n"
            "                     (else $KLEND_ARIO_KEY; else plaintext)\n"
-           "  --json             machine-readable output\n"
-           "  -h, --help         this text\n";
+           "  --format FMT       text|table|json|csv|tsv (default text)\n"
+           "  --json             same as --format json\n"
+           "  --no-header        omit the header row of csv/tsv/table\n"
+           "  -h, --help         this text\n"
+           "\n"
+           "run `klend_ario_cli help <command>` for a verb's options\n";
+}
+
+std::string usageFor(std::string_view topic) {
+    if (topic == "add") {
+        return "usage: klend_ario_cli add [TITLE] --start EXPR [--end EXPR | --duration D]\n"
+               "                       [--type T] [--importance N] [--urgency N]\n"
+               "                       [--alarm-offset N] [--notes TEXT] [--hidden]\n"
+               "\n"
+               "  TITLE can also be given with --title.\n"
+               "  A missing --start means now, but only when --duration is given.\n";
+    }
+    if (topic == "edit") {
+        return "usage: klend_ario_cli edit <id> [--title T] [--start EXPR] [--end EXPR]\n"
+               "                             [--duration D] [--shift D] [--type T]\n"
+               "                             [--importance N] [--urgency N]\n"
+               "                             [--alarm-offset N] [--notes TEXT | --clear-notes]\n"
+               "                             [--hidden | --unhide]\n"
+               "\n"
+               "  Only the flags you pass change. Moving --start preserves the duration\n"
+               "  unless --end or --duration is also given. --shift moves the whole\n"
+               "  event and cannot be combined with --start/--end/--duration.\n";
+    }
+    if (topic == "duplicate") {
+        return "usage: klend_ario_cli duplicate <id> [--start EXPR] [--shift D]\n"
+               "\n"
+               "  Copies every field into a new event and prints its id.\n";
+    }
+    if (topic == "list") {
+        return "usage: klend_ario_cli list [--from EXPR] [--to EXPR]\n"
+               "\n"
+               "  Default range is today 00:00 UTC plus 7 days.\n";
+    }
+    if (topic == "show") {
+        return "usage: klend_ario_cli show <id>\n";
+    }
+    if (topic == "rm") {
+        return "usage: klend_ario_cli rm <id>\n"
+               "\n"
+               "  Removing an id that does not exist succeeds; the operation is\n"
+               "  idempotent so a script can delete without checking first.\n";
+    }
+    if (topic == "holidays") {
+        return "usage: klend_ario_cli holidays [--country CC] [--year N]\n"
+               "\n"
+               "  A civil-date query; it never opens the database.\n";
+    }
+    if (topic == "help") {
+        return "usage: klend_ario_cli help [command]\n";
+    }
+    return {};
 }
 
 } // namespace klend_ario::cli

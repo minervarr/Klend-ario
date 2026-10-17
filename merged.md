@@ -1,8 +1,16 @@
 # Openseek — Final Plan (v3)
 
+> **Update 2026-10-16:** the newer product notes are captured in
+> [`essentialAgent/REQUIREMENTS.md`](essentialAgent/REQUIREMENTS.md). They
+> supersede this plan on **platform order** (desktop-first; Android deferred)
+> and add a notes companion, a 10-hour automatic sleep window, G-SHOCK
+> sleep/wake sync (research), NTP, and the SQLite-vs-JSON performance question.
+> The rest of this document remains the product design; where it conflicts with
+> the newer notes, those notes and `essentialAgent/` win.
+
 ## 0. One-line vision
 
-A privacy-first, AI-native personal calendar: one encrypted SQLite file, synced via Syncthing, queried by an MCP server, rendered as a weekly 16:9 view, cross-platform (Linux + Android), written in **native C++**.
+A privacy-first, AI-native personal calendar: one encrypted SQLite file, synced via Syncthing, queried by an MCP server, rendered as a weekly 16:9 view, **desktop-first on Linux** (Android deferred), written in **native C++**.
 
 ---
 
@@ -20,6 +28,7 @@ A privacy-first, AI-native personal calendar: one encrypted SQLite file, synced 
 | Urgency channel | **Border thickness** (importance = hue, urgency = border). |
 | Alarm stack | **libnotify + PipeWire** (Linux), **native** (Android). |
 | MVP | **Weekly view + sync**. |
+| Platform order | **Desktop-first (Linux)**; Android deferred (2026-10-16). |
 | Stack | **C++, all native.** |
 | Margins | 720p and below → **no margins**. FHD and up → **1cm-equivalent margins** on a 16cm×9cm baseline. |
 | Week starts | **Sunday.** |
