@@ -26,11 +26,21 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 ninja -C build
 ```
 
-The friendly front end (a stdlib-only Python zipapp) drives the same build:
+The friendly front end (a stdlib-only Python zipapp) drives the same build and
+turns on the weekly view where its prerequisites exist:
 
 ```bash
-./scripts/build.sh            # Linux-only for now
+./scripts/build.sh                      # Debug into build/ (tests included)
+./scripts/build.sh build --release      # Release into build_release/
+./scripts/klend_ario_builder.pyz        # interactive menu
+./scripts/klend_ario_builder.pyz build --gui      # force the weekly view
+./scripts/klend_ario_builder.pyz build --no-gui   # skip it
 ```
+
+The GUI needs the Vulkan SDK (and `slangc`), plus the Wayland/xkb development
+packages; the tool probes for them and passes `-DKLEND_BUILD_GUI=ON` when they
+are present. The CMake option itself defaults to OFF so a machine without them
+still configures and tests the app.
 
 ## Test
 

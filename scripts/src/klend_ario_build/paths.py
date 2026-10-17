@@ -18,6 +18,7 @@ from .errors import BuildError
 CMAKE_FILE = "CMakeLists.txt"
 MANIFEST_FILE = "manifest.json"
 CLI_BINARY = "klend_ario_cli"
+GUI_BINARY = "klend_ario_gui"
 
 # Debug builds into `build/` — the path the manual documents for the dev loop
 # (`./build/cli/klend_ario_cli`). Release gets its own directory so the two can
@@ -75,6 +76,11 @@ def build_dir(root: Path, *, debug: bool) -> Path:
 def binary_path(build_dir: Path) -> Path:
     """The CLI executable a build directory is expected to contain."""
     return build_dir / "cli" / CLI_BINARY
+
+
+def gui_binary_path(build_dir: Path) -> Path:
+    """The weekly-view executable, when the GUI was built."""
+    return build_dir / "gui" / GUI_BINARY
 
 
 def display(root: Path, path: Path) -> str:

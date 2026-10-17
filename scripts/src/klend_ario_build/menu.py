@@ -48,3 +48,20 @@ def choose(
 def choose_build_type(*, reader: Reader = input) -> str:
     """Return ``Debug`` or ``Release``."""
     return choose("Select build type:", BUILD_TYPE_OPTIONS, default="Debug", reader=reader)
+
+
+def confirm(prompt: str, *, default: bool, reader: Reader = input) -> bool:
+    """Ask a yes/no question; empty input takes ``default``."""
+    marker = "[Y/n]" if default else "[y/N]"
+    while True:
+        try:
+            answer = reader(f"{prompt} {marker}: ").strip().lower()
+        except EOFError as exc:
+            raise UsageError("no input available: pass --gui or --no-gui") from exc
+        if not answer:
+            return default
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print("Please answer y or n.")

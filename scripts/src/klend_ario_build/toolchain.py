@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -50,6 +51,40 @@ def find_ninja(explicit: str | None = None, env: Mapping[str, str] | None = None
     if found:
         return found
     raise BuildError(f"ninja not found: put it on PATH, set ${NINJA_ENV}, or pass --ninja <path>")
+
+
+GUI_PACKAGES = ("wayland-client", "wayland-cursor", "xkbcommon")
+
+
+def gui_prerequisites(env: Mapping[str, str] | None = None) -> tuple[bool, str]:
+    """Whether the weekly view can be BUILT here, and why not when it cannot.
+
+    The GUI sits behind a CMake option that defaults to OFF so a machine without
+    the Vulkan SDK can still configure the app. This probe is what lets the
+    builder turn the option on by itself where it would work, instead of every
+    user having to know the flag exists.
+
+    Only the BUILD side is checked: a Slang compiler, and the Wayland/xkb
+    development files CMake looks for through pkg-config. A missing runtime (no
+    compositor, no GPU) is not a build problem.
+    """
+    env_map = env or os.environ
+    if not (_which("slangc", env_map) or env_map.get("VULKAN_SDK")):
+        return False, "no Slang compiler (install the Vulkan SDK or put slangc on PATH)"
+
+    pkg = _which("pkg-config", env_map) or _which("pkgconf", env_map)
+    if not pkg:
+        return False, "pkg-config not found (needed to probe Wayland/xkb)"
+    for module in GUI_PACKAGES:
+        result = subprocess.run(
+            [pkg, "--exists", module],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if result.returncode != 0:
+            return False, f"{module} development files not found"
+    return True, "Vulkan/Slang and Wayland development files present"
 
 
 def discover(

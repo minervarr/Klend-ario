@@ -34,3 +34,33 @@ def test_extra_cmake_argument_must_be_d() -> None:
     with pytest.raises(SystemExit) as excinfo:
         cli.main(["build", "--dry-run", "notadefine"])
     assert excinfo.value.code == 2
+
+
+def test_gui_flag_adds_the_cmake_option(capsys: pytest.CaptureFixture[str]) -> None:
+    # --gui wins without probing the machine, so this works on any toolchain.
+    assert cli.main(["build", "--debug", "--dry-run", "--gui"]) == 0
+    out = capsys.readouterr().out
+    assert "-DKLEND_BUILD_GUI=ON" in out
+    assert "gui:" in out
+
+
+def test_no_gui_flag_leaves_the_option_out(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["build", "--debug", "--dry-run", "--no-gui"]) == 0
+    out = capsys.readouterr().out
+    assert "KLEND_BUILD_GUI" not in out
+
+
+def test_gui_and_no_gui_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(["build", "--gui", "--no-gui"])
+    assert excinfo.value.code == 2
+
+
+def test_confirm_defaults_and_answers() -> None:
+    from klend_ario_build import menu
+
+    assert menu.confirm("gui?", default=True, reader=lambda _: "") is True
+    assert menu.confirm("gui?", default=False, reader=lambda _: "") is False
+    assert menu.confirm("gui?", default=True, reader=lambda _: "n") is False
+    assert menu.confirm("gui?", default=False, reader=lambda _: "yes") is True
+    assert menu.confirm("gui?", default=False, reader=lambda _: "N") is False

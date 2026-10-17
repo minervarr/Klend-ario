@@ -113,6 +113,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Demo | Permanent `demo/klend_ario_demo.py`: stdlib-only Python consumer of the built binaries; every run uses a throwaway temp `--db`, never the real `state` DB, and never links `core/`. See `DEMO.md` |
 | Build system | **CMake + Ninja only** |
+| Build tool & GUI | `scripts/klend_ario_builder.pyz` probes for `slangc`/`$VULKAN_SDK` and the Wayland/xkb `pkg-config` modules, then passes `-DKLEND_BUILD_GUI=ON`; `--gui`/`--no-gui` override, the menu asks. The CMake option defaults to OFF so a machine without the SDK still configures |
 | GUI build | `-DKLEND_BUILD_GUI=ON` (default OFF): the window + capture tool need the Vulkan SDK, `slangc` and Wayland/xkb. `klend_ario_view` and its pure suites always build |
 | GUI mode | **Read-only** (Phase 4a): `Db::openReadOnly`/`openEncryptedReadOnly`, CLI/MCP are the write paths. `--hidden` switches the query to `Visibility::Any` |
 | GUI refresh | One `EventQuery` per visible week; a 1 s poll of `Db::dataVersion()` reloads when ANOTHER connection commits (that is how an MCP edit appears live). The now-line redraws on a timer |

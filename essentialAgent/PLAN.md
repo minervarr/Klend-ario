@@ -289,6 +289,15 @@ ctest --test-dir build --output-on-failure      # all pass
 
 Newest first. One line per meaningful change.
 
+- **Build tool knows the GUI (2026-10-17).** `klend_ario_builder.pyz` now probes
+  for the weekly view's build prerequisites (`slangc`/`$VULKAN_SDK` and the
+  Wayland/xkb `pkg-config` modules) and passes `-DKLEND_BUILD_GUI=ON` when they
+  are present, so `build --release` produces `build_release/gui/klend_ario_gui`
+  without the user knowing the flag. `--gui`/`--no-gui` override, the menu asks,
+  and the CMake option still defaults to OFF for machines without the SDK. The
+  zipapp is rebuilt; `scripts/tests` covers the flag, the mutual exclusion and
+  the confirm prompt (13 passing). No production code changed.
+
 - **Phase 4a — the weekly view exists and renders (2026-10-17).** Added the pure
   scene (`gui/src/scene.*`), local-day resolution (`local_time.*`), theme/metrics,
   the DB→view bridge (`week_store.*`), the Canvas adapter, the `klend_ario_gui`

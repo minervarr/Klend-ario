@@ -104,11 +104,19 @@ ctest --test-dir build --output-on-failure
 python3 demo/klend_ario_demo.py
 ```
 
-The zipapp build tool (once Phase 0 is done) is the friendly front end:
+The zipapp build tool is the friendly front end:
 
 ```bash
-./scripts/build.sh            # Linux-only for now
+./scripts/build.sh                      # Debug into build/ (the dev loop)
+./scripts/build.sh build --release      # Release into build_release/
+./scripts/klend_ario_builder.pyz        # the same tool, interactive menu
 ```
+
+`klend_ario_builder.pyz` (rebuilt by `scripts/build_pyz.py`) probes for the
+weekly view's build prerequisites and enables `KLEND_BUILD_GUI` by itself when
+they are present; `--gui` / `--no-gui` override that, and the menu asks. The
+CMake option still defaults to OFF so a machine without the Vulkan SDK can
+configure the app. The GUI binary, when built, is `build/gui/klend_ario_gui`.
 
 Release builds exist but are not the dev loop; tests are **Debug-only**.
 

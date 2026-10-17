@@ -54,6 +54,19 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="path to ninja (default: $KLEND_ARIO_NINJA, then PATH)",
     )
+    gui = parser.add_mutually_exclusive_group()
+    gui.add_argument(
+        "--gui",
+        dest="gui",
+        action="store_true",
+        help="also build the weekly view (needs the Vulkan SDK, slangc and Wayland/xkb)",
+    )
+    gui.add_argument(
+        "--no-gui",
+        dest="gui",
+        action="store_false",
+        help="skip the weekly view even when its prerequisites are present",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -64,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print the project version from manifest.json",
     )
-    parser.set_defaults(build_type=None)
+    parser.set_defaults(build_type=None, gui=None)
     return parser
 
 
@@ -109,6 +122,36 @@ def _resolve_command(
     return command, build_type
 
 
+def _resolve_gui(args: argparse.Namespace, *, reader=input) -> bool:
+    """Whether this build includes the weekly view.
+
+    An explicit flag wins. Otherwise the builder probes for the GUI's build
+    prerequisites and asks in the menu — a machine without the Vulkan SDK must
+    still be able to build the app, and a machine with it should not need to
+    know that a flag exists.
+    """
+    if args.gui is not None:
+        if args.gui:
+            ui.note("    gui:   on (weekly view, --no-gui skips it)")
+        else:
+            ui.note("    gui:   off (explicit --no-gui)")
+        return bool(args.gui)
+
+    available, reason = toolchain.gui_prerequisites()
+    if sys.stdin.isatty() and (args.command or "") in MENU_COMMANDS:
+        chosen = menu.confirm("Build the weekly view (GUI)?", default=available, reader=reader)
+    else:
+        chosen = available
+
+    if chosen:
+        ui.note("    gui:   on (weekly view, --no-gui skips it)")
+        if not available:
+            ui.warn(f"GUI requested but {reason}; the configure step will fail")
+    else:
+        ui.note(f"    gui:   off ({reason}; --gui overrides)")
+    return chosen
+
+
 def run_command(args: argparse.Namespace, extra: Sequence[str]) -> int:
     """Execute one parsed command."""
     paths.current_target()  # Linux-only for now; raises on anything else.
@@ -119,6 +162,10 @@ def run_command(args: argparse.Namespace, extra: Sequence[str]) -> int:
     ui.step("[1/3] Checking toolchain...")
     tools = toolchain.discover(ninja=args.ninja or None, dry_run=args.dry_run)
     job_count = toolchain.jobs()
+
+    gui = _resolve_gui(args)
+    if gui:
+        extra = [*extra, "-DKLEND_BUILD_GUI=ON"]
 
     build_path = paths.build_dir(root, debug=debug)
     binary = builder.build_variant(
@@ -131,6 +178,8 @@ def run_command(args: argparse.Namespace, extra: Sequence[str]) -> int:
         dry_run=args.dry_run,
     )
     ui.ok(f"\nDone: {paths.display(root, binary)}")
+    if gui:
+        ui.note(f"  gui:  {paths.display(root, paths.gui_binary_path(build_path))}")
     if debug:
         ui.note(f"  test: ctest --test-dir {paths.display(root, build_path)} --output-on-failure")
     return 0
