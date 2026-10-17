@@ -18,6 +18,9 @@ void testNoArgsIsHelp() {
     assert(parse({"-h"}).verb == Verb::Help);
     assert(parse({"--help"}).verb == Verb::Help);
     assert(parse({"help"}).verb == Verb::Help);
+    assert(parse({"--version"}).verb == Verb::Version);
+    assert(parse({"-V"}).verb == Verb::Version);
+    assert(!parse({"--version", "extra"}).error.empty());
 }
 
 void testVerbs() {
@@ -261,6 +264,40 @@ void testImportFlags() {
     assert(!parse({"import", "a.csv", "--from", "today"}).error.empty());
 }
 
+void testOptionsAreScopedToTheirVerbs() {
+    // A flag on an unrelated verb must be a usage error, never a silent no-op.
+    assert(!parse({"export", "--title", "X"}).error.empty());
+    assert(!parse({"export", "--start", "now"}).error.empty());
+    assert(!parse({"export", "--notes", "X"}).error.empty());
+    assert(!parse({"show", "1", "--importance", "5"}).error.empty());
+    assert(!parse({"rm", "1", "--notes", "X"}).error.empty());
+    assert(!parse({"doctor", "--title", "X"}).error.empty());
+    assert(!parse({"stats", "--hidden"}).error.empty());
+    assert(!parse({"duplicate", "1", "--title", "X"}).error.empty());
+    assert(!parse({"duplicate", "1", "--end", "now"}).error.empty());
+    assert(!parse({"add", "A", "--start", "now", "--unhide"}).error.empty());
+    assert(!parse({"add", "A", "--start", "now", "--clear-notes"}).error.empty());
+    assert(!parse({"add", "A", "--start", "now", "--shift", "1h"}).error.empty());
+    assert(!parse({"add", "A", "--start", "now", "--country", "US"}).error.empty());
+    assert(!parse({"completion", "bash", "--year", "2026"}).error.empty());
+    assert(!parse({"holidays", "--title", "X"}).error.empty());
+    assert(!parse({"list", "--days", "3"}).error.empty());
+    assert(!parse({"completion", "bash", "--format", "xml"}).error.empty());
+    assert(!parse({"help", "--json"}).error.empty());
+    assert(!parse({"export", "--no-header"}).error.empty());
+    assert(!parse({"import", "x.csv", "--no-header"}).error.empty());
+    assert(!parse({"add", "A", "--start", "now", "--no-header"}).error.empty());
+
+    // The legitimate uses stay legitimate.
+    assert(parse({"duplicate", "1", "--start", "now"}).error.empty());
+    assert(parse({"duplicate", "1", "--shift", "1h"}).error.empty());
+    assert(parse({"edit", "1", "--unhide"}).error.empty());
+    assert(parse({"edit", "1", "--clear-notes"}).error.empty());
+    assert(parse({"holidays", "--country", "PE", "--year", "2026"}).error.empty());
+    assert(parse({"show", "1", "--no-header"}).error.empty());
+    assert(parse({"holidays", "--no-header"}).error.empty());
+}
+
 void testStatsAndDoctorFlags() {
     const Args stats = parse({"stats", "--from", "2026-10-01", "--to", "2026-11-01", "--type",
                               "sleep", "--visible"});
@@ -295,6 +332,13 @@ void testHelpTopics() {
 
     const Args shortFlag = parse({"add", "-h"});
     assert(shortFlag.verb == Verb::Help && shortFlag.helpTopic == "add");
+
+    const Args trailingTitle = parse({"add", "--help", "Title"});
+    assert(trailingTitle.verb == Verb::Help && trailingTitle.helpTopic == "add");
+
+    assert(usageFor("update").find("klend_ario_cli edit") != std::string::npos);
+    assert(usageFor("copy").find("klend_ario_cli duplicate") != std::string::npos);
+    assert(usageFor("remove").find("klend_ario_cli rm") != std::string::npos);
 }
 
 void testIntegerOverflowRejected() {
@@ -345,6 +389,7 @@ void testQueryFlags() {
 
     // The three visibility flags describe one choice.
     assert(!parse({"list", "--visible", "--hidden-only"}).error.empty());
+    assert(parse({"list", "--visible", "--visible"}).error.empty());
     assert(!parse({"list", "--visible", "--include-hidden"}).error.empty());
     assert(!parse({"list", "--hidden-only", "--include-hidden"}).error.empty());
 }
@@ -446,6 +491,7 @@ int main() {
     testIntelligenceFlags();
     testExportAndCompletionFlags();
     testImportFlags();
+    testOptionsAreScopedToTheirVerbs();
     testStatsAndDoctorFlags();
     testHolidaysVerb();
     testUsageErrors();

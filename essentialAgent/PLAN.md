@@ -11,7 +11,7 @@ as work lands; this file is the tracker.*
 |---|---|---|
 | **0** | **Scaffold** — submodule, CMake+Ninja, pyz tool, docs, first test | **done** |
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
-| 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** |
+| 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** — CLI frozen 2026-10-17 |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
 | 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **paused** — geometry done; CLI is the priority (2026-10-17) |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
@@ -90,9 +90,13 @@ work is staged so each layer is useful and tested on its own; logic stays in
         `Db::importEvents`: append by default, `--replace`, `--dry-run`, and
         optional id preservation. Parse-before-write means a bad row cannot
         leave a partial import.
+  - [x] **6c — audit close-out.** `Db::openReadOnly`/`openEncryptedReadOnly`;
+        `doctor` and `export` never create, migrate or write a file. Options are
+        allowlisted per verb, completion is generated from one per-verb table,
+        and `--version` is available.
 
-Stage 6 is complete. GUI Phase 4 resumes unless the order changes again — see
-the status log.
+The CLI is frozen as of 2026-10-17. GUI Phase 4 resumes unless the order changes
+again — see the status log.
 
 ---
 
@@ -189,6 +193,17 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **CLI hardening, Stage 6c — audit close-out (2026-10-17).** Added
+  `Db::openReadOnly`/`openEncryptedReadOnly`; `doctor` and `export` no longer
+  create, migrate or write a missing/empty/read-only database. Read-only views
+  with an explicit `--db` now require an existing file. Replaced the broad
+  mutation-option check with per-verb allowlists, scoped `--country`/`--year`,
+  `--days` and `--no-header`, and rejected output flags on `help`/`completion`.
+  Completion is generated from one per-verb table for bash/zsh/fish. Added
+  `--version`, help aliases (`update`/`copy`/`remove`), and a help
+  short-circuit. Tests cover missing/empty/read-only databases, option
+  scoping, and completion negatives; still 28 suites. No submodule change.
 
 - **CLI hardening, Stage 6b — import (2026-10-17).** Added pure
   `core/import` CSV/JSONL parsers (RFC 4180, quoted newlines, reordered headers,

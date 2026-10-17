@@ -1,5 +1,6 @@
 #include "args.hh"
 
+#include <initializer_list>
 #include <limits>
 
 namespace klend_ario::cli {
@@ -80,6 +81,8 @@ const char *verbName(Verb verb) {
         return "holidays";
     case Verb::Help:
         return "help";
+    case Verb::Version:
+        return "version";
     case Verb::None:
         break;
     }
@@ -127,7 +130,15 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
         return a;
     }
 
-    // The verb is the first non-option token; a leading -h/--help also works.
+    // The verb is the first non-option token; leading -h/--help and
+    // --version are the two global actions.
+    if (argv[0] == "--version" || argv[0] == "-V") {
+        a.verb = Verb::Version;
+        if (argv.size() > 1) {
+            a.error = "unexpected argument: " + std::string(argv[1]);
+        }
+        return a;
+    }
     if (argv[0] == "-h" || argv[0] == "--help") {
         a.verb = Verb::Help;
         i = 1;
@@ -220,14 +231,6 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             return true;
         };
-        auto takeVisibility = [&](bool &slot) -> bool {
-            if (a.visibleOnly || a.hiddenOnly || a.includeHidden) {
-                a.error = "--visible, --hidden-only and --include-hidden are mutually exclusive";
-                return false;
-            }
-            slot = true;
-            return true;
-        };
         auto queryOnly = [&](const char *name) -> bool {
             if (!isQueryVerb(a.verb)) {
                 a.error = std::string(name) + " is only valid for query commands";
@@ -263,17 +266,33 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             return true;
         };
-        auto mutationOnly = [&](const char *name) -> bool {
-            if (isQueryVerb(a.verb)) {
-                a.error = std::string(name) + " is not valid for query commands";
-                return false;
+        // Option scoping is an allowlist, not "not a query". Accepting a flag
+        // on an unrelated verb and silently ignoring it is how a user comes to
+        // believe a title filter or an edit was applied when it was not.
+        auto allowedOnly = [&](std::initializer_list<Verb> verbs, const char *name) -> bool {
+            for (const Verb verb : verbs) {
+                if (a.verb == verb) {
+                    return true;
+                }
             }
-            return true;
+            a.error = std::string(name) + " is not valid for " +
+                      (a.verb == Verb::None ? "this command" : verbName(a.verb));
+            return false;
         };
 
         if (token == "--json") {
+            if (a.verb == Verb::Help || a.verb == Verb::Completion) {
+                a.error = "--json is not valid for " + std::string(verbName(a.verb));
+                return a;
+            }
             a.json = true;
         } else if (token == "--no-header") {
+            if (!allowedOnly({Verb::List, Verb::Today, Verb::Week, Verb::Next, Verb::Agenda,
+                              Verb::Search, Verb::Conflicts, Verb::Free, Verb::Alarms,
+                              Verb::Stats, Verb::Doctor, Verb::Show, Verb::Holidays},
+                             "--no-header")) {
+                return a;
+            }
             a.noHeader = true;
         } else if (token == "--db") {
             if (!takeValue(a.dbPath, "--db")) {
@@ -284,12 +303,16 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
                 return a;
             }
         } else if (token == "--format") {
+            if (a.verb == Verb::Help || a.verb == Verb::Completion) {
+                a.error = "--format is not valid for " + std::string(verbName(a.verb));
+                return a;
+            }
             if (!takeValue(a.format, "--format")) {
                 return a;
             }
             a.formatGiven = true;
         } else if (token == "--title") {
-            if (!mutationOnly("--title")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--title")) {
                 return a;
             }
             if (!takeValue(a.title, "--title")) {
@@ -297,7 +320,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.titleGiven = true;
         } else if (token == "--start") {
-            if (!mutationOnly("--start")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit, Verb::Duplicate}, "--start")) {
                 return a;
             }
             if (!takeValue(a.start, "--start")) {
@@ -305,7 +328,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.startGiven = true;
         } else if (token == "--end") {
-            if (!mutationOnly("--end")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--end")) {
                 return a;
             }
             if (!takeValue(a.end, "--end")) {
@@ -313,7 +336,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.endGiven = true;
         } else if (token == "--duration") {
-            if (!mutationOnly("--duration")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--duration")) {
                 return a;
             }
             if (!takeValue(a.duration, "--duration")) {
@@ -321,7 +344,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.durationGiven = true;
         } else if (token == "--shift") {
-            if (!mutationOnly("--shift")) {
+            if (!allowedOnly({Verb::Edit, Verb::Duplicate}, "--shift")) {
                 return a;
             }
             if (!takeValue(a.shift, "--shift")) {
@@ -373,7 +396,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.offsetGiven = true;
         } else if (token == "--days") {
-            if (!queryOnly("--days")) {
+            if (!allowedOnly({Verb::Agenda}, "--days")) {
                 return a;
             }
             if (!takeNonNegative(a.days, "--days")) {
@@ -443,23 +466,29 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             if (!visibilityOnly("--visible")) {
                 return a;
             }
-            if (!takeVisibility(a.visibleOnly)) {
+            if (a.hiddenOnly || a.includeHidden) {
+                a.error = "--visible, --hidden-only and --include-hidden are mutually exclusive";
                 return a;
             }
+            a.visibleOnly = true;
         } else if (token == "--hidden-only") {
             if (!visibilityOnly("--hidden-only")) {
                 return a;
             }
-            if (!takeVisibility(a.hiddenOnly)) {
+            if (a.visibleOnly || a.includeHidden) {
+                a.error = "--visible, --hidden-only and --include-hidden are mutually exclusive";
                 return a;
             }
+            a.hiddenOnly = true;
         } else if (token == "--include-hidden") {
             if (!visibilityOnly("--include-hidden")) {
                 return a;
             }
-            if (!takeVisibility(a.includeHidden)) {
+            if (a.visibleOnly || a.hiddenOnly) {
+                a.error = "--visible, --hidden-only and --include-hidden are mutually exclusive";
                 return a;
             }
+            a.includeHidden = true;
         } else if (token == "--from") {
             if (!rangeOnly("--from")) {
                 return a;
@@ -477,16 +506,22 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.toGiven = true;
         } else if (token == "--country") {
+            if (!allowedOnly({Verb::Holidays}, "--country")) {
+                return a;
+            }
             if (!takeValue(a.country, "--country")) {
                 return a;
             }
         } else if (token == "--year") {
+            if (!allowedOnly({Verb::Holidays}, "--year")) {
+                return a;
+            }
             if (!takeInt(a.year, "--year")) {
                 return a;
             }
             a.yearGiven = true;
         } else if (token == "--importance") {
-            if (!mutationOnly("--importance")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--importance")) {
                 return a;
             }
             if (!takeInt(a.importance, "--importance")) {
@@ -494,7 +529,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.importanceGiven = true;
         } else if (token == "--urgency") {
-            if (!mutationOnly("--urgency")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--urgency")) {
                 return a;
             }
             if (!takeInt(a.urgency, "--urgency")) {
@@ -502,7 +537,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.urgencyGiven = true;
         } else if (token == "--alarm-offset") {
-            if (!mutationOnly("--alarm-offset")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--alarm-offset")) {
                 return a;
             }
             if (!takeInt(a.alarmOffset, "--alarm-offset")) {
@@ -510,7 +545,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.alarmOffsetGiven = true;
         } else if (token == "--notes") {
-            if (!mutationOnly("--notes")) {
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--notes")) {
                 return a;
             }
             if (!takeValue(a.notes, "--notes")) {
@@ -518,7 +553,7 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
             }
             a.notesGiven = true;
         } else if (token == "--clear-notes") {
-            if (!mutationOnly("--clear-notes")) {
+            if (!allowedOnly({Verb::Edit}, "--clear-notes")) {
                 return a;
             }
             a.notes.clear();
@@ -529,10 +564,13 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
                 a.error = "for queries use --hidden-only (or --visible/--include-hidden)";
                 return a;
             }
+            if (!allowedOnly({Verb::Add, Verb::Edit}, "--hidden")) {
+                return a;
+            }
             a.hidden = true;
             a.hiddenGiven = true;
         } else if (token == "--unhide") {
-            if (!mutationOnly("--unhide")) {
+            if (!allowedOnly({Verb::Edit}, "--unhide")) {
                 return a;
             }
             a.hidden = false;
@@ -542,6 +580,9 @@ Args parseArgs(const std::vector<std::string_view> &argv) {
                 a.helpTopic = verbName(a.verb);
             }
             a.verb = Verb::Help;
+            // Help wins: do not let a later stray token turn `add --help Foo`
+            // into "unknown help topic: Foo".
+            return a;
         } else if (isOption(token)) {
             a.error = "unknown option: " + std::string(token);
             return a;
@@ -615,7 +656,7 @@ std::string usage() {
            "  doctor     check the database's health (read-only)\n"
            "  export     write events as csv, jsonl or ics\n"
            "  import     read events from csv or jsonl\n"
-           "  completion print a shell completion script\n"
+           "  completion  print a shell completion script\n"
            "  show       show one event by id\n"
            "  rm         delete one event by id\n"
            "  holidays   list a country's public holidays for a year\n"
@@ -639,8 +680,8 @@ std::string usage() {
            "  --visible | --hidden-only | --include-hidden\n"
            "  free also takes --min-duration D (default 30m)\n"
            "\n"
-           "stats takes --from/--to, --type and the visibility flags; doctor\n"
-           "takes only --db/--key-file/--format and never writes.\n"
+           "stats takes --from/--to, --type and the visibility flags; doctor is\n"
+           "read-only and takes the common database/display flags.\n"
            "\n"
            "export options (export):\n"
            "  --format FMT       csv|jsonl|ics (default csv)\n"
@@ -664,6 +705,7 @@ std::string usage() {
            "  --json             same as --format json (jsonl for export/import)\n"
            "  --no-header        omit the header row of csv/tsv/table\n"
            "  -h, --help         this text\n"
+           "  -V, --version      print the version\n"
            "\n"
            "run `klend_ario_cli help <command>` for a verb's options\n";
 }
@@ -688,6 +730,14 @@ std::string queryOptionsUsage() {
 } // namespace
 
 std::string usageFor(std::string_view topic) {
+    // The parser accepts these aliases; `help update` should not be a dead end.
+    if (topic == "update") {
+        topic = "edit";
+    } else if (topic == "copy") {
+        topic = "duplicate";
+    } else if (topic == "remove") {
+        topic = "rm";
+    }
     if (topic == "add") {
         return "usage: klend_ario_cli add [TITLE] --start EXPR [--end EXPR | --duration D]\n"
                "                       [--type T] [--importance N] [--urgency N]\n"
@@ -799,6 +849,7 @@ std::string usageFor(std::string_view topic) {
     }
     if (topic == "doctor") {
         return "usage: klend_ario_cli doctor [--db PATH] [--key-file PATH] [--format FMT]\n"
+               "                            [--json] [--no-header]\n"
                "\n"
                "  Read-only health report: SQLite integrity, schema version,\n"
                "  modified_utc marker, Syncthing conflict copies, event intervals.\n"
@@ -830,7 +881,10 @@ std::string usageFor(std::string_view topic) {
                "  startup file. It does not open the database.\n";
     }
     if (topic == "show") {
-        return "usage: klend_ario_cli show <id>\n";
+        return "usage: klend_ario_cli show <id> [--format FMT]\n"
+               "\n"
+               "  Prints one event. Text adds the notes; JSON is one object;\n"
+               "  csv/tsv are a one-row table.\n";
     }
     if (topic == "rm") {
         return "usage: klend_ario_cli rm <id>\n"
@@ -839,12 +893,21 @@ std::string usageFor(std::string_view topic) {
                "  idempotent so a script can delete without checking first.\n";
     }
     if (topic == "holidays") {
-        return "usage: klend_ario_cli holidays [--country CC] [--year N]\n"
+        return "usage: klend_ario_cli holidays [--country CC] [--year N] [--format FMT]\n"
                "\n"
-               "  A civil-date query; it never opens the database.\n";
+               "  A civil-date query; it never opens the database. Country defaults\n"
+               "  to PE, year to the current calendar year.\n";
     }
     if (topic == "help") {
-        return "usage: klend_ario_cli help [command]\n";
+        return "usage: klend_ario_cli help [command]\n"
+               "\n"
+               "  With no topic this prints the full help. The aliases update,\n"
+               "  copy and remove are accepted too.\n";
+    }
+    if (topic == "version") {
+        return "usage: klend_ario_cli --version\n"
+               "\n"
+               "  Prints the CLI version and exits.\n";
     }
     return {};
 }

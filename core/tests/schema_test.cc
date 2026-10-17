@@ -210,6 +210,77 @@ void testEncryptionRoundTrip() {
     std::remove(path);
 }
 
+void testReadOnlyOpenDoesNotCreateOrMigrate() {
+    const char *missing = "klend_readonly_missing_test.db";
+    std::remove(missing);
+    assert(!Db::openReadOnly(missing).ok());
+    std::ifstream missingCheck(missing);
+    assert(!missingCheck.good());
+
+    const char *path = "klend_readonly_test.db";
+    std::remove(path);
+    {
+        auto db = Db::open(path);
+        assert(db.ok());
+        assert(db.value().insertEvent(makeEvent("readable", 100, 200)).ok());
+    }
+    {
+        auto db = Db::openReadOnly(path);
+        assert(db.ok());
+        auto all = db.value().listEvents(0, 1000);
+        assert(all.ok());
+        assert(all.value().size() == 1);
+        assert(all.value()[0].title == "readable");
+        // The handle is genuinely read-only, not just conventionally so.
+        assert(!db.value().insertEvent(makeEvent("nope", 300, 400)).ok());
+    }
+
+    // A zero-byte file must open for inspection, but must not be initialised.
+    // That is what lets `doctor` report the missing schema instead of creating
+    // a healthy empty calendar over a truncated file.
+    const char *empty = "klend_readonly_empty_test.db";
+    std::remove(empty);
+    {
+        std::ofstream out(empty);
+        assert(out.good());
+    }
+    {
+        auto db = Db::openReadOnly(empty);
+        assert(db.ok());
+        assert(!db.value().getMeta("schema_version").ok());
+    }
+    {
+        std::ifstream check(empty, std::ios::binary | std::ios::ate);
+        assert(check.good());
+        assert(check.tellg() == 0);
+    }
+
+    std::remove(path);
+    std::remove(empty);
+}
+
+void testEncryptedReadOnlyOpen() {
+    const char *path = "klend_readonly_crypto_test.db";
+    std::remove(path);
+    const std::string key = "correct horse battery staple";
+    {
+        auto db = Db::openEncrypted(path, key);
+        assert(db.ok());
+        assert(db.value().insertEvent(makeEvent("secret", 100, 200)).ok());
+    }
+    {
+        auto db = Db::openEncryptedReadOnly(path, key);
+        assert(db.ok());
+        auto all = db.value().listEvents(0, 1000);
+        assert(all.ok());
+        assert(all.value().size() == 1);
+        assert(all.value()[0].title == "secret");
+    }
+    assert(!Db::openEncryptedReadOnly(path, "wrong key").ok());
+    assert(!Db::openReadOnly(path).ok());
+    std::remove(path);
+}
+
 void testEncryptedFileIsNotPlaintext() {
     const char *path = "klend_crypto_header_test.db";
     std::remove(path);
@@ -246,6 +317,8 @@ int main() {
     testNewerSchemaIsRefused();
     testModifiedMarker();
     testEncryptionRoundTrip();
+    testReadOnlyOpenDoesNotCreateOrMigrate();
+    testEncryptedReadOnlyOpen();
     testEncryptedFileIsNotPlaintext();
     std::printf("schema_test: all assertions passed\n");
     return 0;

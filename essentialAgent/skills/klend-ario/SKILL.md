@@ -87,6 +87,12 @@ Work inside-out: model → storage → CLI. Never put logic in the CLI.
 - **Import is all-or-nothing.** Parse the whole document before opening the DB,
   then use `Db::importEvents` for one transaction. Empty input is an error;
   append is the default, and replace/preserve-ids are explicit.
+- **Read-only means `SQLITE_OPEN_READONLY`.** `doctor` and `export` use
+  `Db::openReadOnly`/`openEncryptedReadOnly`; they must not create, migrate, or
+  repair a missing/empty/read-only file.
+- **Options are allowlisted per verb.** Reject a flag the verb does not use at
+  parse time (exit `2`); never let `export --title X` silently export
+  everything. Completion is generated from the same table.
 - **No speculative storage rewrite.** SQLite stays until a benchmark proves a
   JSON store faster on the real operations; encryption is not a blocker.
 - **Captured ≠ built.** Notes, the 10 h sleep scheduler, G-SHOCK sync, and NTP

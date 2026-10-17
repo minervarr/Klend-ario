@@ -71,7 +71,7 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Pure model / parsing (`event`, ISO 8601, priority→colour) | `core/tests/` | the one source file, nothing else | none |
 | UTC / day arithmetic (`parseIso8601`, `formatIso8601`, half-open day) | `core/tests/event_test.cc` | `src/event.cc` | none |
 | User-facing instants/durations (`today`, `week+7d`, `90m`) | `core/tests/timeexpr_test.cc` | `src/timeexpr.cc src/event.cc` | none |
-| Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB |
+| Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB; `schema_test` uses real temp files for read-only/encrypted open |
 | Query filters/sort/pagination (`EventQuery` → SQL) | `core/tests/query_test.cc` | `src/db.cc src/schema.cc src/query.cc src/event.cc` + `sqlite3` | in-memory DB |
 | Pairwise conflicts (`findConflicts`) | `core/tests/conflict_test.cc` | `src/conflict.cc src/event.cc` | none |
 | Free-slot intervals (`freeSlots`) | `core/tests/free_test.cc` | `src/free.cc src/event.cc` | none |
@@ -192,9 +192,11 @@ doctor over an in-memory database:
 - An empty export is still a valid document: a CSV header, zero JSONL lines, or
   an empty VCALENDAR.
 
-`completion_test` pins the three scripts and their verb list. The CLI is one
-binary, so the list is static; if a verb is added, update `completion.cc` and
-the test together.
+`completion_test` pins the three scripts and their verb list. All shells are
+generated from one per-verb table in `completion.cc`, so the test checks the
+negative cases as well: `list` has no `--days`, `next` has no `--sort`, `stats`
+has no `--limit` or `--min-duration`, and `holidays` has no `--db`. If a verb or
+flag is added, update the table and the test together.
 
 `import_test` pins the parser and the transaction:
 
@@ -208,6 +210,18 @@ the test together.
   transaction, preserves ids only when asked, and rolls a collision back.
 - The CLI parses before opening the database, so `--dry-run` and a bad file
   leave no target file behind; an empty file is an error.
+
+Read-only access and option scoping are covered at both layers:
+
+- `schema_test` opens a real file read-only, asserts an insert fails, asserts a
+  missing path is not created, and asserts a zero-byte file is not migrated.
+  Encrypted read-only open works with the right key and fails with the wrong one.
+- `e2e_test` asserts `doctor`/`export` do not create a missing database, a
+  zero-byte database stays zero bytes and reports a schema fail, and both
+  commands work on a `chmod 0444` file.
+- `args_test` asserts every mutation flag is rejected on unrelated verbs, plus
+  `--country`/`--year` (holidays), `--days` (agenda), and output flags on
+  `help`/`completion`. Legitimate uses are asserted alongside them.
 
 ### CLI rendering
 

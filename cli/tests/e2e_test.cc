@@ -8,6 +8,7 @@
 #include <vector>
 
 #ifndef _WIN32
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -806,6 +807,86 @@ int main() {
     assert(run({"import", "no_such_file.csv"}) == kExitError);
     assert(run({"import", "no_such_file.csv", "--format", "ics"}) == kExitUsage);
     assert(run({"list", "--replace"}) == kExitUsage);
+    assert(run({"help", "update"}) == kExitOk);
+    assert(run({"help", "copy"}) == kExitOk);
+    assert(run({"help", "remove"}) == kExitOk);
+
+#ifndef _WIN32
+    {
+        const Capture version = runCaptured({"--version"});
+        assert(version.code == kExitOk);
+        assert(version.output.rfind("klend_ario_cli ", 0) == 0);
+        assert(version.output.back() == '\n');
+    }
+#endif
+
+    // Options are scoped to their verbs, not silently ignored.
+    assert(run({"export", "--db", intelDb, "--title", "Z"}) == kExitUsage);
+    assert(run({"completion", "bash", "--title", "X"}) == kExitUsage);
+    assert(run({"completion", "bash", "--format", "xml"}) == kExitUsage);
+    assert(run({"holidays", "--hidden"}) == kExitUsage);
+    assert(run({"list", "--db", intelDb, "--days", "3"}) == kExitUsage);
+    assert(run({"export", "--db", intelDb, "--no-header"}) == kExitUsage);
+
+#ifndef _WIN32
+    // `doctor` and `export` are read-only: a missing file is an error, not a
+    // freshly initialised calendar.
+    const char *missingDoctor = "klend_e2e_missing_doctor.db";
+    const char *missingExport = "klend_e2e_missing_export.db";
+    const char *missingView = "klend_e2e_missing_view.db";
+    const char *emptyDoctor = "klend_e2e_empty_doctor.db";
+    std::remove(missingDoctor);
+    std::remove(missingExport);
+    std::remove(missingView);
+    std::remove(emptyDoctor);
+    {
+        const Capture doctor = runCaptured({"doctor", "--db", missingDoctor});
+        assert(doctor.code == kExitError);
+        std::ifstream check(missingDoctor);
+        assert(!check.good());
+
+        const Capture exported =
+            runCaptured({"export", "--db", missingExport, "--format", "csv"});
+        assert(exported.code == kExitError);
+        std::ifstream checkExport(missingExport);
+        assert(!checkExport.good());
+
+        // Explicit --db on a view follows the same rule.
+        const Capture listed = runCaptured({"list", "--db", missingView});
+        assert(listed.code == kExitError);
+        std::ifstream checkView(missingView);
+        assert(!checkView.good());
+    }
+    {
+        {
+            std::ofstream empty(emptyDoctor);
+            assert(empty.good());
+        }
+        const Capture doctor = runCaptured({"doctor", "--db", emptyDoctor});
+        assert(doctor.code == kExitError);
+        assert(doctor.output.find("[fail] schema:") != std::string::npos);
+        std::ifstream check(emptyDoctor, std::ios::binary | std::ios::ate);
+        assert(check.good());
+        assert(check.tellg() == 0);
+    }
+    {
+        // A read-only file must be readable by both commands, and doctor must
+        // not need write access to report.
+        assert(chmod(intelDb, 0444) == 0);
+        const Capture exported = runCaptured({"export", "--db", intelDb, "--format", "csv"});
+        assert(exported.code == kExitOk);
+        assert(exported.output.find("1,A,") != std::string::npos);
+
+        const Capture doctor = runCaptured({"doctor", "--db", intelDb});
+        assert(doctor.code == kExitOk);
+        assert(doctor.output.find("healthy: yes") != std::string::npos);
+        assert(chmod(intelDb, 0644) == 0);
+    }
+    std::remove(missingDoctor);
+    std::remove(missingExport);
+    std::remove(missingView);
+    std::remove(emptyDoctor);
+#endif
 
     std::remove(intelDb);
 

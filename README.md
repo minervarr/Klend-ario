@@ -40,10 +40,15 @@ Tests are plain `assert()` binaries registered with CTest, built Debug-only:
 ctest --test-dir build --output-on-failure
 ```
 
+The CLI uses three exit codes: `0` success, `1` a failed operation or invalid
+data, and `2` a command-line usage error. `doctor` uses `1` for a warn/fail
+report; `import` uses `1` for a bad file.
+
 ## Run
 
 ```bash
 ./build/cli/klend_ario_cli --help
+./build/cli/klend_ario_cli --version
 ./build/cli/klend_ario_cli help add
 ./build/cli/klend_ario_cli add "Standup" --start today+9h --duration 30m
 ./build/cli/klend_ario_cli today --format table
@@ -66,11 +71,25 @@ ctest --test-dir build --output-on-failure
 ./build/cli/klend_ario_cli holidays --year 2026 --format csv
 ```
 
+Completion is generated, not installed globally:
+
+```bash
+# bash
+source <(./build/cli/klend_ario_cli completion bash)
+
+# zsh (after compinit)
+source <(./build/cli/klend_ario_cli completion zsh)
+
+# fish
+./build/cli/klend_ario_cli completion fish | source
+```
+
 Instants are UTC. Absolute ISO-8601 (`2026-10-16T09:00:00Z`), date-only
 (`2026-10-16`), relative words (`now`, `today`, `tomorrow`, `week`,
 `sunday..saturday`) and offsets (`today+2h`, `+90m`) all work. For views,
 `--format` is `text`, `table`, `json`, `csv`, or `tsv`; `--json` remains an
-alias.
+alias. Flags are scoped to the verbs that use them: an unrelated option is a
+usage error, not a silent no-op.
 
 `today`, `week`, `next` and `agenda` show visible rows by default (hidden sleep
 blocks stay out of the view); `list` and `search` include them so they can be
@@ -94,8 +113,15 @@ one-way interoperability (UTC events, a `VALARM` for the offset). `import`
 reads the same CSV/JSONL shape and appends with fresh ids by default;
 `--replace` restores in one transaction, `--preserve-ids` keeps ids, and
 `--dry-run` only validates. The whole file is parsed before anything is
-written, and empty input is rejected. `completion bash|zsh|fish` prints a
-script for your shell.
+written, and empty input is rejected.
+
+`doctor` and `export` open the database read-only and never create or migrate
+a file. An explicit `--db` on a read-only view must already exist too; view
+verbs may still create the default state path on first use. `completion
+bash|zsh|fish` prints a script for your shell.
+
+The CLI feature set is frozen as of 2026-10-17; new feature work goes to the
+GUI. Bug fixes and tests still belong here.
 
 ## Layout
 

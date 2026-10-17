@@ -42,6 +42,16 @@ public:
     // never touch the schema — the file carries its own salt.
     static arc::Result<Db> openEncrypted(const std::string &path, const std::string &passphrase);
 
+    // Opens an EXISTING database without creating, migrating or writing it.
+    // This is the access mode for `doctor` and `export`: a backup or a damaged
+    // file must be inspected, never repaired. The file must exist; an empty
+    // file opens here and is reported by the reader (diagnostics or the query
+    // that follows), rather than being initialised by `migrate`. A corrupt or
+    // encrypted-but-unkeyed file may fail at open instead.
+    static arc::Result<Db> openReadOnly(const std::string &path);
+    static arc::Result<Db> openEncryptedReadOnly(const std::string &path,
+                                                 const std::string &passphrase);
+
     static arc::Result<Db> openMemory();
 
     // Inserts `e`, ignoring its id, and returns the rowid it was given. Fills
@@ -90,7 +100,8 @@ public:
 
 private:
     explicit Db(sqlite3 *handle) : db_(handle) {}
-    static arc::Result<Db> openInternal(const std::string &path, const std::string *passphrase);
+    static arc::Result<Db> openInternal(const std::string &path, const std::string *passphrase,
+                                        bool readOnly);
     arc::Result<void> migrate();
     arc::Result<void> touchModified();
 

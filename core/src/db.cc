@@ -194,7 +194,9 @@ Db &Db::operator=(Db &&other) noexcept {
     return *this;
 }
 
-arc::Result<Db> Db::open(const std::string &path) { return openInternal(path, nullptr); }
+arc::Result<Db> Db::open(const std::string &path) {
+    return openInternal(path, nullptr, false);
+}
 
 arc::Result<Db> Db::openEncrypted(const std::string &path, const std::string &passphrase) {
     if (passphrase.empty()) {
@@ -203,13 +205,28 @@ arc::Result<Db> Db::openEncrypted(const std::string &path, const std::string &pa
         return arc::Error{arc::ErrorKind::Other, 0,
                           "openEncrypted needs a non-empty passphrase"};
     }
-    return openInternal(path, &passphrase);
+    return openInternal(path, &passphrase, false);
 }
 
-arc::Result<Db> Db::openInternal(const std::string &path, const std::string *passphrase) {
+arc::Result<Db> Db::openReadOnly(const std::string &path) {
+    return openInternal(path, nullptr, true);
+}
+
+arc::Result<Db> Db::openEncryptedReadOnly(const std::string &path,
+                                          const std::string &passphrase) {
+    if (passphrase.empty()) {
+        return arc::Error{arc::ErrorKind::Other, 0,
+                          "openEncryptedReadOnly needs a non-empty passphrase"};
+    }
+    return openInternal(path, &passphrase, true);
+}
+
+arc::Result<Db> Db::openInternal(const std::string &path, const std::string *passphrase,
+                                 bool readOnly) {
     sqlite3 *handle = nullptr;
-    const int rc = sqlite3_open_v2(path.c_str(), &handle,
-                                   SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    const int flags =
+        readOnly ? SQLITE_OPEN_READONLY : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+    const int rc = sqlite3_open_v2(path.c_str(), &handle, flags, nullptr);
     if (rc != SQLITE_OK) {
         arc::Error error = dbError(handle, "open");
         if (handle != nullptr) {
@@ -232,6 +249,30 @@ arc::Result<Db> Db::openInternal(const std::string &path, const std::string *pas
             sqlite3_close(handle);
             return error;
         }
+    }
+
+    if (readOnly) {
+        // Belt and braces: SQLITE_OPEN_READONLY already refuses writes, and
+        // query_only makes an accidental write from a later refactor fail
+        // instead of quietly succeeding on a writable file.
+        if (auto guarded = exec(handle, "PRAGMA query_only = ON;"); !guarded) {
+            sqlite3_close(handle);
+            return guarded.error();
+        }
+        // Touch the schema header so an encrypted file without a key (or a
+        // corrupt one) fails HERE, not as a confusing query error later. An
+        // empty file still passes: diagnostics reports the missing schema.
+        if (auto readable = exec(handle, "PRAGMA schema_version;"); !readable) {
+            if (passphrase != nullptr && readable.error().code == SQLITE_NOTADB) {
+                sqlite3_close(handle);
+                return arc::Error{arc::ErrorKind::Other, SQLITE_NOTADB,
+                                  "cannot read the database with that passphrase "
+                                  "(wrong key, or not a Klend-ario database)"};
+            }
+            sqlite3_close(handle);
+            return readable.error();
+        }
+        return Db(handle);
     }
 
     Db db(handle);

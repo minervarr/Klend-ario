@@ -10,6 +10,7 @@ add_executable(klend_ario_cli
     src/completion.cc)
 
 target_link_libraries(klend_ario_cli PRIVATE klend_ario_core)
+target_compile_definitions(klend_ario_cli PRIVATE KLEND_ARIO_VERSION="${PROJECT_VERSION}")
 
 if(MSVC)
     target_compile_options(klend_ario_cli PRIVATE /W3 /utf-8)
@@ -46,6 +47,7 @@ klend_ario_add_test(e2e_test
     SOURCES  tests/e2e_test.cc src/args.cc src/commands.cc src/format.cc src/completion.cc
     INCLUDES src
     LIBS     klend_ario_core)
+target_compile_definitions(e2e_test PRIVATE KLEND_ARIO_VERSION="${PROJECT_VERSION}")
 
 # completion_test — the three scripts alone. No core, no database, no shell.
 klend_ario_add_test(completion_test

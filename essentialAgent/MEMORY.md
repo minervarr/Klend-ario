@@ -107,7 +107,9 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI doctor | Read-only. Checks integrity, schema version, `modified_utc`, Syncthing copies and interval sanity; exit `1` on any warn/fail. It never migrates, fixes, or deletes |
 | CLI export | Data access, not a view: all time/all rows by default, hidden included, stdout. `--format` is verb-scoped: `csv|jsonl|ics` (default csv). CSV/JSONL are the lossless interchange shapes; ICS is one-way |
 | CLI import | Parse the whole file first, then write in one transaction. Append by default with fresh ids; `--replace` and `--preserve-ids` are explicit. Empty input is an error; `--dry-run` never opens the database |
-| CLI completion | `completion bash|zsh|fish` prints a static script. The CLI is one binary, so completion must work from a fresh checkout without an install step |
+| CLI completion | `completion bash|zsh|fish` prints a generated script. One per-verb table feeds all three shells, so suggestions cannot drift into invalid flags. The CLI is one binary, so completion must work from a fresh checkout without an install step |
+| CLI database access | `doctor` and `export` use `Db::openReadOnly`/`openEncryptedReadOnly`: no create, no migrate, no writes. Explicit `--db` on a read-only view must exist; the default path may be created for first use |
+| CLI status | Feature-complete and frozen 2026-10-17. New work is maintenance only; GUI Phase 4 is next |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Build system | **CMake + Ninja only** |
 | Frontends | `cli/` now, `gui/` later; Android later (deferred) |
@@ -216,6 +218,18 @@ These are truths this workspace already paid for. Do not relearn them.
 - **A doctor must be read-only.** `diagnose` never migrates or repairs: a user
   runs it to decide what to do. The exit code is the script contract (`0` all
   ok, `1` warn/fail), and the report names the file/paths a human must look at.
+  Read-only is a SQLite access mode (`SQLITE_OPEN_READONLY` + `query_only`),
+  not just a promise in the command layer. Opening with create/migrate made
+  `doctor` turn a missing or zero-byte file into a healthy empty calendar and
+  made `export` fail on a read-only backup.
+- **Options are allowlisted per verb.** "Not a query command" is not a scope.
+  Every flag names the exact verbs that use it; anything else is exit `2`.
+  Otherwise `export --title Z` succeeds, exports everything, and the user
+  believes a filter was applied. Completion uses the same lists.
+- **One completion table, three shells.** Bash/zsh/fish are generated from the
+  same per-verb option table. Tests assert negative cases (`stats` has no
+  `--limit`, `next` has no `--sort`, `list` has no `--days`), not just that a
+  verb appears somewhere.
 - **Export is not display.** `list --format csv` is a compact human table;
   `export` is a stable interchange contract with every stored field. They are
   allowed to differ, and `core/export` must not depend on `cli/format`.

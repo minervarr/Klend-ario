@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(klend_ario LANGUAGES C CXX)
+project(klend_ario VERSION 0.1.0 LANGUAGES C CXX)
 
 # ---------------------------------------------------------------------------
 # C++17 with no compiler extensions, matching the rest of this workspace.

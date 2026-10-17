@@ -21,6 +21,7 @@ namespace klend_ario::cli {
 enum class Verb {
     None,
     Help,
+    Version,
     Add,
     Edit,
     Duplicate,

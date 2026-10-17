@@ -45,12 +45,22 @@ using klend_ario::Visibility;
 constexpr long long kDaySeconds = 86400;
 constexpr long long kWeekSeconds = 7 * kDaySeconds;
 
+const char *versionString() {
+#ifdef KLEND_ARIO_VERSION
+    return KLEND_ARIO_VERSION;
+#else
+    return "dev";
+#endif
+}
+
 // The database lives in the app's STATE directory — machine data, written
 // constantly — never home/data and never beside the executable
 // (essentialAgent/AGENTS.md §2.3).
-std::string defaultDbPath() {
+std::string defaultDbPath(bool create) {
     const arc::fs::Layout layout = arc::fs::layout("klend_ario");
-    arc::fs::ensureLayout(layout);
+    if (create) {
+        arc::fs::ensureLayout(layout);
+    }
     return arc::fs::join(layout.state, "klend_ario.db");
 }
 
@@ -60,8 +70,10 @@ int reportError(const arc::Error &error) {
 }
 
 int usageError(const std::string &message) {
-    std::fprintf(stderr, "error: %s\n\n", message.c_str());
-    std::fputs(usage().c_str(), stderr);
+    std::fprintf(stderr, "error: %s\n", message.c_str());
+    std::fputs("run `klend_ario_cli --help` or `klend_ario_cli help <command>` "
+               "for usage.\n",
+               stderr);
     return kExitUsage;
 }
 
@@ -122,8 +134,8 @@ std::string resolvePassphrase(const Args &args, std::string &error) {
     return {};
 }
 
-std::string dbPathOf(const Args &args) {
-    return args.dbPath.empty() ? defaultDbPath() : args.dbPath;
+std::string dbPathOf(const Args &args, bool create) {
+    return args.dbPath.empty() ? defaultDbPath(create) : args.dbPath;
 }
 
 // Import reads the whole document before parsing: CSV quoting can put a
@@ -156,8 +168,52 @@ std::string readAll(const std::string &path, std::string &error) {
     return text;
 }
 
-int openDb(const Args &args, Db &out, bool warnConflicts = true) {
-    const std::string path = dbPathOf(args);
+enum class DbAccess { ReadWrite, ReadOnly };
+
+// `doctor` and `export` must never create or repair a file. The view verbs
+// follow the same rule when the user names a database explicitly: a typo in
+// --db should fail, while the default path may still be created on first use.
+bool readOnlyView(Verb verb) {
+    switch (verb) {
+    case Verb::List:
+    case Verb::Today:
+    case Verb::Week:
+    case Verb::Next:
+    case Verb::Agenda:
+    case Verb::Search:
+    case Verb::Conflicts:
+    case Verb::Free:
+    case Verb::Alarms:
+    case Verb::Stats:
+    case Verb::Show:
+        return true;
+    default:
+        return false;
+    }
+}
+
+DbAccess accessFor(const Args &args, Verb verb) {
+    if (verb == Verb::Export || verb == Verb::Doctor) {
+        return DbAccess::ReadOnly;
+    }
+    if (!args.dbPath.empty() && readOnlyView(verb)) {
+        return DbAccess::ReadOnly;
+    }
+    return DbAccess::ReadWrite;
+}
+
+int openDb(const Args &args, Db &out, bool warnConflicts = true,
+           DbAccess access = DbAccess::ReadWrite) {
+    const std::string path = dbPathOf(args, access == DbAccess::ReadWrite);
+    const bool readOnly = access == DbAccess::ReadOnly && path != ":memory:";
+
+    if (readOnly) {
+        std::ifstream probe(path, std::ios::binary);
+        if (!probe) {
+            std::fprintf(stderr, "error: database not found: %s\n", path.c_str());
+            return kExitError;
+        }
+    }
 
     std::string keyError;
     const std::string passphrase = resolvePassphrase(args, keyError);
@@ -165,7 +221,11 @@ int openDb(const Args &args, Db &out, bool warnConflicts = true) {
         return usageError(keyError);
     }
 
-    auto opened = passphrase.empty() ? Db::open(path) : Db::openEncrypted(path, passphrase);
+    auto opened = readOnly
+                      ? (passphrase.empty() ? Db::openReadOnly(path)
+                                            : Db::openEncryptedReadOnly(path, passphrase))
+                      : (passphrase.empty() ? Db::open(path)
+                                            : Db::openEncrypted(path, passphrase));
     if (!opened) {
         if (passphrase.empty()) {
             std::fprintf(stderr, "error: %s\n", opened.error().message.c_str());
@@ -674,7 +734,7 @@ int commandQuery(const Args &args, Verb verb, OutputFormat format, const FormatO
     query.offset = args.offset;
 
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, accessFor(args, verb)); rc != kExitOk) {
         return rc;
     }
     auto events = db.queryEvents(query);
@@ -746,7 +806,7 @@ int commandConflicts(const Args &args, OutputFormat format, const FormatOptions 
     }
 
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, accessFor(args, Verb::Conflicts)); rc != kExitOk) {
         return rc;
     }
     auto events = db.queryEvents(query);
@@ -787,7 +847,7 @@ int commandFree(const Args &args, OutputFormat format, const FormatOptions &opti
     }
 
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, accessFor(args, Verb::Free)); rc != kExitOk) {
         return rc;
     }
     auto events = db.queryEvents(query);
@@ -826,7 +886,7 @@ int commandAlarms(const Args &args, OutputFormat format, const FormatOptions &op
     }
 
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, accessFor(args, Verb::Alarms)); rc != kExitOk) {
         return rc;
     }
     auto events = db.queryEvents(query);
@@ -873,7 +933,7 @@ int commandStats(const Args &args, OutputFormat format, const FormatOptions &opt
     }
 
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, accessFor(args, Verb::Stats)); rc != kExitOk) {
         return rc;
     }
     auto events = db.queryEvents(query);
@@ -889,10 +949,10 @@ int commandDoctor(const Args &args, OutputFormat format, const FormatOptions &op
     Db db;
     // The report itself names every conflict copy; do not duplicate the warning
     // on stderr while producing it.
-    if (const int rc = openDb(args, db, false); rc != kExitOk) {
+    if (const int rc = openDb(args, db, false, DbAccess::ReadOnly); rc != kExitOk) {
         return rc;
     }
-    const klend_ario::Diagnostics report = klend_ario::diagnose(db, dbPathOf(args));
+    const klend_ario::Diagnostics report = klend_ario::diagnose(db, dbPathOf(args, false));
     std::fputs(formatDiagnostics(report, format, options).c_str(), stdout);
     return report.healthy() ? kExitOk : kExitError;
 }
@@ -937,7 +997,7 @@ int commandExport(const Args &args) {
     }
 
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, DbAccess::ReadOnly); rc != kExitOk) {
         return rc;
     }
     auto events = db.queryEvents(query);
@@ -1016,7 +1076,7 @@ int commandShow(const Args &args, OutputFormat format, const FormatOptions &opti
         return usageError("show needs an event id");
     }
     Db db;
-    if (const int rc = openDb(args, db); rc != kExitOk) {
+    if (const int rc = openDb(args, db, true, accessFor(args, Verb::Show)); rc != kExitOk) {
         return rc;
     }
     auto event = db.getEvent(args.id);
@@ -1070,6 +1130,11 @@ int commandHolidays(const Args &args, OutputFormat format, const FormatOptions &
 int runCommand(const Args &args) {
     if (!args.error.empty()) {
         return usageError(args.error);
+    }
+
+    if (args.verb == Verb::Version) {
+        std::fprintf(stdout, "klend_ario_cli %s\n", versionString());
+        return kExitOk;
     }
 
     if (args.verb == Verb::Help) {
@@ -1146,6 +1211,7 @@ int runCommand(const Args &args) {
     case Verb::Completion:
         break; // handled above, before display-format parsing
     case Verb::Help:
+    case Verb::Version:
     case Verb::None:
         break;
     }

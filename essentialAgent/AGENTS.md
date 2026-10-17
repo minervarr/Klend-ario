@@ -142,6 +142,12 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   alarms — hiding is a display choice.
 - **`doctor` is read-only.** `diagnose` never migrates, repairs, or deletes; it
   reports and lets a human decide. Its exit code is `0` all-ok, `1` warn/fail.
+  Use `Db::openReadOnly`/`openEncryptedReadOnly`: no create, no migrate. A
+  missing or zero-byte file must be reported, never initialised into a healthy
+  empty calendar.
+- **Options are allowlisted per verb.** A flag that the verb does not use is a
+  usage error (exit `2`), not a silent no-op. Completion is generated from the
+  same per-verb table.
 - **Export is a separate contract from display.** `core/export` owns the
   CSV/JSONL/ICS bytes; do not reuse the CLI's compact `list` renderer. `--format`
   is verb-scoped, and ICS is one-way: it is an exporter, not a parser.
