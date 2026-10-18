@@ -74,8 +74,11 @@ struct Scene {
 };
 
 // `week` is drawn as seven local days; `nowUtc` is passed in, never read from
-// the clock, so the now-line and "today" are assertable.
+// the clock, so the now-line and "today" are assertable. `minTextPx` is the
+// font's generated legibility floor; the window passes it, the pure tests keep
+// the historical 0 (fraction-only) sizes.
 Scene buildWeekScene(int width, int height, const WeekModel &week, long long nowUtc,
-                     const TextMetrics &text, const Theme &theme = defaultTheme());
+                     const TextMetrics &text, const Theme &theme = defaultTheme(),
+                     int minTextPx = 0);
 
 } // namespace klend_ario::gui

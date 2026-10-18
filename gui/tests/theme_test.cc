@@ -61,6 +61,27 @@ static void testMetricsHaveFloors() {
     assert(m.nowLineThickness == 1);
 }
 
+static void testReadableFloorClampsTextRoles() {
+    // The window passes the generated font floor (16 px for ui.otf). Every text
+    // role must respect it, while geometry keeps its own floors.
+    const UiMetrics small = metricsFor(Rect{0, 0, 1280, 720}, 16);
+    assert(small.weekLabelSize >= 16);
+    assert(small.navLabelSize >= 16);
+    assert(small.dayLetterSize >= 16);
+    assert(small.dayDateSize >= 16);
+    assert(small.eventTimeSize >= 16);
+    assert(small.eventTitleSize >= 16);
+    assert(small.labelPad >= 2);
+    assert(small.hatchSpacing >= 6);
+
+    // At 1080p the event time (14) was the only role below the floor; the
+    // title (17) and the headers were already above it.
+    const UiMetrics fhd = metricsFor(Rect{120, 120, 1680, 840}, 16);
+    assert(fhd.eventTimeSize == 16);
+    assert(fhd.eventTitleSize == 17);
+    assert(fhd.weekLabelSize == 27);
+}
+
 static void testThemeIsReadable() {
     const Theme theme = defaultTheme();
     // Chrome is dark and text is light: a white-on-white palette would pass
@@ -81,6 +102,7 @@ int main() {
     testMetricsAtFhd();
     testMetricsAtSevenTwentyP();
     testMetricsHaveFloors();
+    testReadableFloorClampsTextRoles();
     testThemeIsReadable();
     std::printf("theme_test: all assertions passed\n");
     return 0;

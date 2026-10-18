@@ -1,5 +1,6 @@
 #include "week_view.hh"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -14,8 +15,11 @@
 #include "klend_ario/event.hh"
 #include "klend_ario/query.hh"
 #include "klend_ario/sync.hh"
+#include "raster_font.hh"
 #include "renderer.hh"
 #include "scene_render.hh"
+#include "text_inputs.hh"
+#include "ui_metrics.hh"
 #include "week_store.hh"
 
 namespace klend_ario::gui {
@@ -67,6 +71,7 @@ bool WeekView::create(const ViewOptions &options) {
     if (!openDatabase(options)) {
         return false;
     }
+    minTextPx_ = static_cast<int>(std::ceil(kMinReadableTextSizePx));
     if (!loadFont()) {
         // A missing font is not fatal: Canvas falls back to stroke outlines.
         std::fprintf(stderr, "warning: fonts/ui/ui.otf not found; using outline text\n");
@@ -87,6 +92,10 @@ bool WeekView::create(const ViewOptions &options) {
         dataVersion_ = version.value();
     }
     reload();
+    // Bake before the window is shown: the first glyph set costs a few tens of
+    // milliseconds with FreeType, and paying it behind a black window is worse
+    // than paying it once at startup.
+    ensureText();
 
     host_->startTimer(kPollTimer, 1000);
     host_->showWindow();
@@ -137,15 +146,54 @@ bool WeekView::openDatabase(const ViewOptions &options) {
 }
 
 bool WeekView::loadFont() {
-    font_ = std::make_unique<Font>();
     const std::string path = host_->exeDir() + "fonts/ui/ui.otf";
-    std::vector<uint8_t> bytes;
-    if (host_->dataReader().read(path.c_str(), bytes) && !bytes.empty() &&
-        font_->loadFromMemory(bytes.data(), bytes.size())) {
+
+    // The normal path: per-size FreeType coverage in an R8 atlas, drawn as
+    // quads. It is the framework's "Bézier outlines, rasterized once and
+    // cached" text renderer — not MTSDF. See essentialAgent/GUI.md.
+    font_ = std::make_unique<RasterFont>();
+    if (font_->open(host_->dataReader(), path.c_str())) {
         return true;
     }
     font_.reset();
+
+    // A broken install must still show text. The legacy outline path is 1-bit,
+    // but it is a fallback, not the product's text renderer.
+    std::fprintf(stderr, "warning: cannot open the text atlas; using outline text\n");
+    outlineFont_ = std::make_unique<Font>();
+    std::vector<uint8_t> bytes;
+    if (host_->dataReader().read(path.c_str(), bytes) && !bytes.empty() &&
+        outlineFont_->loadFromMemory(bytes.data(), bytes.size())) {
+        return true;
+    }
+    outlineFont_.reset();
     return false;
+}
+
+void WeekView::ensureText() {
+    if (!font_ || renderer_ == nullptr) {
+        return;
+    }
+
+    const int width = static_cast<int>(renderer_->width());
+    const int height = static_cast<int>(renderer_->height());
+    const UiMetrics metrics = metricsFor(frameFor(width, height).content, minTextPx_);
+    const TextInputs inputs = collectTextInputs(week_, metrics);
+    if (inputs.codepoints.empty() || inputs.sizesPx.empty()) {
+        return;
+    }
+
+    // A resize changes the role sizes; a per-size cache would otherwise keep
+    // every intermediate set forever. Reset the sheet and bake the current set.
+    if (inputs.sizesPx != glyphSizes_) {
+        font_->reset();
+        glyphSizes_ = inputs.sizesPx;
+    }
+
+    const int added = font_->ensureGlyphs(inputs.codepoints, inputs.sizesPx);
+    if (added > 0 || !renderer_->msdfReady()) {
+        renderer_->initMsdf(*font_);
+    }
 }
 
 void WeekView::reload() {
@@ -181,23 +229,46 @@ void WeekView::run() {
         }
         drawFrame();
         pendingFrames_ = 0;
+        // A cell the scene asked for and the cache did not have was recorded
+        // during drawFrame(). Arm the next pass AFTER the decrement above: a
+        // pendingFrames_ = 1 set inside drawFrame() would be erased right here.
+        if (font_ && font_->hasMisses()) {
+            pendingFrames_ = 1;
+        }
     }
 }
 
 void WeekView::drawFrame() {
     const uint32_t width = renderer_->width();
     const uint32_t height = renderer_->height();
-    const FontTextMetrics metrics(font_.get());
+
+    // Bake what the PREVIOUS frame asked for and did not have. This runs before
+    // the scene is built, so the next pass measures and draws with the cells.
+    if (font_ && font_->hasMisses()) {
+        if (font_->bakeMisses() > 0) {
+            renderer_->initMsdf(*font_);
+        }
+    }
+    ensureText();
+
+    const FontTextMetrics metrics(font_.get(), outlineFont_.get());
 
     curves_.clear();
     shapes_.clear();
+    textQuads_.clear();
     scene_ = buildWeekScene(static_cast<int>(width), static_cast<int>(height), week_, nowUtc_,
-                            metrics, theme_);
+                            metrics, theme_, minTextPx_);
 
-    Canvas canvas(curves_, width, height, font_.get(), 0.0f, 0.0f, 0.0f, 0.0f);
+    Canvas canvas(curves_, width, height, outlineFont_.get(), 0.0f, 0.0f, 0.0f, 0.0f);
     canvas.useShapes(&shapes_);
+    if (font_ && font_->valid()) {
+        canvas.useMsdf(font_.get(), &textQuads_);
+    }
     drawScene(canvas, scene_);
-    renderer_->draw(curves_, /*overlay_rotation_deg=*/0, {}, {}, {}, shapes_);
+    // Text quads are the FIFTH argument; shapes are the sixth. Passing them in
+    // the shape slot gives a blank text layer and a shape pipeline that reads
+    // glyph vertices as rectangles.
+    renderer_->draw(curves_, /*overlay_rotation_deg=*/0, {}, {}, textQuads_, shapes_);
 }
 
 void WeekView::onHostResized() { pendingFrames_ = 1; }
@@ -316,6 +387,7 @@ void WeekView::shutdown() {
     }
     renderer_.reset();
     font_.reset();
+    outlineFont_.reset();
 }
 
 } // namespace klend_ario::gui

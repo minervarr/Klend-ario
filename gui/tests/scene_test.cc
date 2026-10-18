@@ -354,6 +354,21 @@ static void testHolidayAccent() {
     assert(header->color.g == defaultTheme().holidayAccent.g);
 }
 
+static void testReadableFloorReachesEveryTextOp() {
+    // The window passes the font's generated floor into buildWeekScene. Every
+    // text op must honour it, not just the ones theme_test looks at directly.
+    WeekModel week = makeWeek();
+    week.events.push_back(makeEvent("Deep work", at(0, 10), at(0, 12)));
+    const FakeMetrics measure;
+    const Scene scene = buildWeekScene(kWidth, kHeight, week, at(6, 12), measure,
+                                       defaultTheme(), 16);
+    for (const Op &op : scene.ops) {
+        if (op.kind == OpKind::Text) {
+            assert(op.size >= 16);
+        }
+    }
+}
+
 int main() {
     // Clock labels are local; pin the zone so "10:00" means 10:00.
     setenv("TZ", "UTC0", 1);
@@ -373,6 +388,7 @@ int main() {
     testEmptyWeekSaysSo();
     testAlarmOnlyWeekIsEmpty();
     testHolidayAccent();
+    testReadableFloorReachesEveryTextOp();
     std::printf("scene_test: all assertions passed\n");
     return 0;
 }

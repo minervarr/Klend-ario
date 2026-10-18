@@ -24,8 +24,9 @@ one sitting.
 | `src/theme.{hh,cc}` | chrome palette + `UiMetrics` derived from the content rect (no DPI query, no device pixels) |
 | `src/scene.{hh,cc}` | `WeekModel` + `TextMetrics` → `Scene` (draw ops and hit targets) |
 | `src/week_store.{hh,cc}` | `Db` + local week → `WeekModel`, one `EventQuery` |
-| `src/scene_render.{hh,cc}` | `Scene` → `Canvas`; `FontTextMetrics` |
-| `src/week_view.{hh,cc}` | `AppView`: window, read-only DB, keys, clicks, 1 s poll |
+| `src/text_inputs.{hh,cc}` | the codepoint/size set the glyph cache must bake before measuring |
+| `src/scene_render.{hh,cc}` | `Scene` → `Canvas`; `FontTextMetrics`; descent clip |
+| `src/week_view.{hh,cc}` | `AppView`: window, `RasterFont`, read-only DB, keys, clicks, 1 s poll |
 | `src/gui_main.cc` | `app_shell_main`: `--db`, `--key-file`, `--hidden` |
 | `tools/capture_main.cc` | headless PNG scenarios (dev tooling) |
 
@@ -76,6 +77,22 @@ cd build/gui
 
 Scenarios: an empty week, a mixed week, sleep visible vs hidden, and overlap
 density (two to four concurrent events plus one crossing midnight).
+
+## Text
+
+The window draws text with **`RasterFont`**, not the legacy outline path:
+FreeType bakes true 8-bit coverage once per `(glyph, size, phase)` into an R8
+atlas, and each frame emits textured quads through `Canvas::useMsdf` +
+`Renderer::initMsdf`. That is the "Bézier outlines, cached" design; the outline
+path's winding fill is `SS=1` and looks 1-bit. MTSDF is not used here — the
+weekly view has fixed integer sizes, so per-size coverage is the right cache.
+
+`gui/src/text_inputs` collects the codepoints and sizes **before** the scene is
+built, because `RasterFont::textWidth()` returns 0 for an unbaked cell. Sizes
+are clamped to the font's generated `kMinReadableTextSizePx` (16 px for
+`ui.otf`), and the text clip gets a 0.30 em descent allowance so `p/g/y` are not
+cut. The full rationale, traps and capture checks are in
+[`../essentialAgent/GUI.md`](../essentialAgent/GUI.md).
 
 ## Rules worth keeping
 

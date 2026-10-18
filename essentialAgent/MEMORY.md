@@ -119,6 +119,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | GUI refresh | One `EventQuery` per visible week; a 1 s poll of `Db::dataVersion()` reloads when ANOTHER connection commits (that is how an MCP edit appears live). The now-line redraws on a timer |
 | GUI local days | `gui/src/local_time` is the ONLY place a timezone is read; it returns local civil days with `[startUtc, endUtc)` bounds (23/25 h on DST days). Layout/scene take instants and never call the OS |
 | GUI rendering | Three layers: pure geometry → pure `Scene` (draw ops) → a thin `vk_canvas` mapping. Colours are core (`rgbForStyle`, `textColorOn`); chrome lives in `gui/theme` |
+| GUI text | **`RasterFont`** (per-size FreeType coverage atlas) through `Canvas::useMsdf` + `Renderer::initMsdf`; quads are `draw()`'s fifth argument. The legacy outline path is a missing-font fallback only — its winding fill is `SS=1` (1-bit). Not MTSDF: the sizes are fixed integers. See `GUI.md` §5 |
 | GUI week label | "Week N · Mon YYYY" from `weekOfYearFromCivilDate`; a week containing 1 January is week **1 of the new year** even though it starts in December |
 | GUI short events | Height stays proportional; labels are tiered by height (time, then title, then nothing). A five-minute event is a thin coloured line at its true start |
 | GUI screenshots | `klend_ario_capture` renders fixture weeks through `VK_EXT_headless_surface` to PNG (Debug-only, `TZ=UTC0`), so the view is reviewable with no display |
@@ -178,6 +179,14 @@ These are truths this workspace already paid for. Do not relearn them.
   exhaustively on a machine with no GPU, and it is why the layout is the first
   half of Phase 4 rather than the last. Colours stay in core
   (`klend_ario::styleFor`) so every surface that draws an event agrees.
+- **A vector outline is not a text cache.** The GUI's first slice emitted every
+  glyph as Bézier records and let the compute winding fill decide inside/outside
+  at `SS=1`; the result was 1-bit text (exactly two colours in a capture crop)
+  while SDF boxes stayed smooth. `RasterFont` is the actual "Bézier outlines,
+  rasterized once" design: FreeType bakes true coverage per (glyph, size,
+  phase) into an R8 atlas, and each frame is quads. The `OverlayRasterizer`'s
+  memcmp cache is full-scene, not a glyph cache. `initMsdf`/`useMsdf` name the
+  shared pipeline, not the MTSDF choice.
 - **The CLI command layer is separate from `main()`.** `cli/src/commands.cc`
   holds exactly one function per verb and a single `runCommand`; `main()` only
   builds the arg vector and calls it. That is what lets `cli/tests/e2e_test.cc`

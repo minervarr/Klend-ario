@@ -21,7 +21,8 @@ add_library(klend_ario_view STATIC
     src/local_time.cc
     src/theme.cc
     src/scene.cc
-    src/week_store.cc)
+    src/week_store.cc
+    src/text_inputs.cc)
 
 target_include_directories(klend_ario_view PUBLIC src)
 target_link_libraries(klend_ario_view PUBLIC klend_ario_core)
@@ -56,6 +57,13 @@ klend_ario_add_test(theme_test
 klend_ario_add_test(scene_test
     SOURCES  tests/scene_test.cc src/scene.cc src/theme.cc src/week_layout.cc
              src/local_time.cc ${CMAKE_SOURCE_DIR}/core/src/event.cc
+    INCLUDES src ${CMAKE_SOURCE_DIR}/core/include)
+
+# The codepoint/size set the glyph cache must bake. No font, no vk_canvas: it is
+# the pure half of "measure only after the cells exist". Also pins that a title
+# can add non-ASCII codepoints and that the reserved dayDateSize is not baked.
+klend_ario_add_test(text_inputs_test
+    SOURCES  tests/text_inputs_test.cc src/text_inputs.cc
     INCLUDES src ${CMAKE_SOURCE_DIR}/core/include)
 
 # The database-to-view bridge: one query, seven local days, the week label and

@@ -21,6 +21,7 @@
 #include "theme.hh"
 
 class Host;
+class RasterFont;
 class Renderer;
 struct Font;
 struct ImageDraw;
@@ -56,6 +57,7 @@ public:
 private:
     bool openDatabase(const ViewOptions &options);
     bool loadFont();
+    void ensureText();
     void reload();
     void drawFrame();
     void goToWeek(long long anchorUtc);
@@ -63,7 +65,11 @@ private:
 
     std::unique_ptr<Host> host_;
     std::unique_ptr<Renderer> renderer_;
-    std::unique_ptr<Font> font_;
+    // The normal text path: a per-size FreeType coverage atlas, drawn as quads
+    // through the shared text pipeline. `outlineFont_` exists only so a broken
+    // install still draws something; it is the legacy 1-bit outline path.
+    std::unique_ptr<RasterFont> font_;
+    std::unique_ptr<Font> outlineFont_;
 
     klend_ario::Db db_;
     bool dbOpen_ = false;
@@ -81,6 +87,9 @@ private:
 
     std::vector<float> curves_;
     std::vector<float> shapes_;
+    std::vector<float> textQuads_;
+    std::vector<int> glyphSizes_; // the size set currently baked in font_
+    int minTextPx_ = 0;           // kMinReadableTextSizePx, passed to the scene
     int pendingFrames_ = 1;
     bool running_ = true;
     int lastCursor_ = -1;

@@ -10,23 +10,27 @@ int scaled(int base, double fraction, int floor) {
     return std::max(floor, static_cast<int>(std::lround(base * fraction)));
 }
 
+int textScaled(int base, double fraction, int floor, int minTextPx) {
+    return std::max({floor, minTextPx, static_cast<int>(std::lround(base * fraction))});
+}
+
 } // namespace
 
 Theme defaultTheme() { return Theme{}; }
 
-UiMetrics metricsFor(const Rect &content) {
+UiMetrics metricsFor(const Rect &content, int minTextPx) {
     UiMetrics m;
     const int h = std::max(content.h, 1);
     const int w = std::max(content.w, 1);
 
     m.topBarHeight = scaled(h, 0.065, 28);
     m.dayBarHeight = scaled(h, 0.058, 26);
-    m.weekLabelSize = scaled(h, 0.032, 13);
-    m.navLabelSize = scaled(h, 0.024, 11);
-    m.dayLetterSize = scaled(h, 0.026, 11);
-    m.dayDateSize = scaled(h, 0.022, 10);
-    m.eventTimeSize = scaled(h, 0.017, 9);
-    m.eventTitleSize = scaled(h, 0.020, 10);
+    m.weekLabelSize = textScaled(h, 0.032, 13, minTextPx);
+    m.navLabelSize = textScaled(h, 0.024, 11, minTextPx);
+    m.dayLetterSize = textScaled(h, 0.026, 11, minTextPx);
+    m.dayDateSize = textScaled(h, 0.022, 10, minTextPx);
+    m.eventTimeSize = textScaled(h, 0.017, 9, minTextPx);
+    m.eventTitleSize = textScaled(h, 0.020, 10, minTextPx);
     m.boxGutter = scaled(w, 0.0015, 1);
     m.maxBorderPx = scaled(w, 0.004, 2);
     m.tailMinHeight = scaled(h, 0.012, 6);

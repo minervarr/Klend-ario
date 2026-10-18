@@ -15,20 +15,27 @@
 #include "scene.hh"
 
 class Canvas;
+class TextFont;
 struct Font;
 
 namespace klend_ario::gui {
 
-// Real glyph advances, so truncation in the scene matches what is drawn. A null
-// font (the stroke fallback) reports zero width: every label then fits, which is
-// the harmless direction to be wrong in.
+// Real glyph advances, so truncation in the scene matches what is drawn.
+//
+// `text` is the normal path: a RasterFont (or MsdfFont) through the shared text
+// pipeline, whose textWidth() includes the same GPOS kerning the layout uses.
+// `outline` is the missing-font fallback, the legacy FreeType outline path. A
+// null pair reports zero width: every label then fits, which is the harmless
+// direction to be wrong in.
 class FontTextMetrics : public TextMetrics {
 public:
-    explicit FontTextMetrics(const Font *font) : font_(font) {}
+    FontTextMetrics(const TextFont *text, const Font *outline = nullptr)
+        : text_(text), outline_(outline) {}
     int width(std::string_view text, int sizePx) const override;
 
 private:
-    const Font *font_;
+    const TextFont *text_;
+    const Font *outline_;
 };
 
 void drawScene(Canvas &canvas, const Scene &scene);

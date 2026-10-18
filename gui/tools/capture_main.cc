@@ -13,6 +13,7 @@
 //   ./klend_ario_capture --frame 1280x720       # the full-bleed layout
 //   ./klend_ario_capture --out /tmp/shots --list
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -20,13 +21,16 @@
 #include <vector>
 
 #include "app_paths.hh"
+#include "asset_reader.hh"
 #include "canvas.hh"
 #include "capture.hh"
-#include "font.hh"
 #include "headless.hh"
+#include "raster_font.hh"
 #include "renderer.hh"
 #include "scene.hh"
 #include "scene_render.hh"
+#include "text_inputs.hh"
+#include "ui_metrics.hh"
 
 namespace {
 
@@ -136,24 +140,39 @@ std::vector<Fixture> fixtures() {
     return out;
 }
 
-std::vector<vkc::Scenario> makeScenarios(const Font &font) {
+std::vector<vkc::Scenario> makeScenarios(RasterFont &font, int minTextPx) {
     std::vector<vkc::Scenario> scenarios;
     for (const Fixture &fixture : fixtures()) {
         vkc::Scenario scenario;
         scenario.path = fixture.path;
-        scenario.render = [&font, fixture](Renderer &renderer) {
+        scenario.render = [&font, fixture, minTextPx](Renderer &renderer) {
+            const int width = static_cast<int>(renderer.width());
+            const int height = static_cast<int>(renderer.height());
+            const gui::UiMetrics metrics =
+                gui::metricsFor(gui::frameFor(width, height).content, minTextPx);
+            const TextInputs inputs = collectTextInputs(fixture.week, metrics);
+
+            // Bake before measuring: RasterFont::textWidth() reads the baked
+            // cells, and a missing size would make every title look like it fits.
+            const int added = font.ensureGlyphs(inputs.codepoints, inputs.sizesPx);
+            if (added > 0 || !renderer.msdfReady()) {
+                renderer.initMsdf(font);
+            }
+
             const FontTextMetrics measure(&font);
-            const Scene scene = buildWeekScene(static_cast<int>(renderer.width()),
-                                               static_cast<int>(renderer.height()),
-                                               fixture.week, fixture.nowUtc, measure);
+            const Scene scene =
+                buildWeekScene(width, height, fixture.week, fixture.nowUtc, measure,
+                               defaultTheme(), minTextPx);
 
             std::vector<float> curves;
             std::vector<float> shapes;
-            Canvas canvas(curves, renderer.width(), renderer.height(), &font, 0.0f, 0.0f, 0.0f,
-                          0.0f);
+            std::vector<float> quads;
+            Canvas canvas(curves, renderer.width(), renderer.height(), nullptr, 0.0f, 0.0f,
+                          0.0f, 0.0f);
             canvas.useShapes(&shapes);
+            canvas.useMsdf(&font, &quads);
             drawScene(canvas, scene);
-            renderer.draw(curves, /*overlay_rotation_deg=*/0, {}, {}, {}, shapes);
+            renderer.draw(curves, /*overlay_rotation_deg=*/0, {}, {}, quads, shapes);
         };
         scenarios.push_back(std::move(scenario));
     }
@@ -174,9 +193,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    Font font;
+    RasterFont font;
+    FileByteReader reader;
     const std::string fontPath = app_paths::exeDir() + "fonts/ui/ui.otf";
-    if (!font.load(fontPath.c_str())) {
+    if (!font.open(reader, fontPath.c_str())) {
         std::fprintf(stderr, "error: cannot load %s\n", fontPath.c_str());
         return 1;
     }
@@ -184,6 +204,7 @@ int main(int argc, char **argv) {
     vkc::CaptureConfig config;
     config.default_out = "gui-shots";
 
-    const std::vector<vkc::Scenario> scenarios = makeScenarios(font);
+    const int minTextPx = static_cast<int>(std::ceil(kMinReadableTextSizePx));
+    const std::vector<vkc::Scenario> scenarios = makeScenarios(font, minTextPx);
     return vkc::capture_main(argc, argv, scenarios, config);
 }

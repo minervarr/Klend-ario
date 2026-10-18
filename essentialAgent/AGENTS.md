@@ -13,6 +13,7 @@ Klend-ario/
 ├── AGENTS.md                     # root pointer (auto-loaded) -> this folder
 ├── opencode.jsonc                # wires essentialAgent/ into OpenCode
 ├── essentialAgent/               # the agent manual (this folder)
+│   ├── GUI.md                    # weekly view: layers, text pipeline, capture, traps
 │   └── REQUIREMENTS.md           # captured 2026-10-16 notes (source + normalized)
 ├── merged.md                     # the product plan ("Openseek")
 ├── manifest.json                 # name/version/platforms/build
@@ -195,6 +196,13 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   `week_layout`, every visual decision in `scene` (asserted by `scene_test` with
   an injected `TextMetrics`), and `scene_render` maps ops to `Canvas` calls.
   Do not put a colour, a label rule or a truncation decision in the renderer.
+- **GUI text is `RasterFont`, never the SS=1 outline path.** Bake the codepoint
+  and size set before building the scene (`gui/src/text_inputs`), then draw
+  quads. Fixed integer sizes make per-size FreeType coverage the right cache;
+  MTSDF is for continuously scaled text. See `GUI.md` §5.
+- **Keep `klend_ario_view` free of the GUI toolchain.** Pass the font's
+  generated readable floor from the window into `metricsFor`/`buildWeekScene`;
+  do not include `app_shell/ui_metrics.hh` from the pure half.
 - **A local day is `[startUtc, endUtc)`.** The columns are local days and a DST
   day is 23 or 25 hours; never assume 86,400 s when drawing. `gui/src/local_time`
   is the only place a timezone is read.

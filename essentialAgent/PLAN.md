@@ -184,6 +184,11 @@ write paths, so the first GUI cannot corrupt a calendar.
 - [x] **Window** — `klend_ario_gui`: `vk_canvas_wayland` + `app_shell`, arrow
       week navigation, `T`/`H`/`Esc`, mouse on the header buttons, read-only DB,
       one-second `Db::dataVersion()` poll so CLI/MCP writes appear live.
+- [x] **Text** — `RasterFont` (per-size FreeType coverage atlas) through the
+      shared text pipeline: `text_inputs` collects the codepoint/size set before
+      the scene, `ensureGlyphs` + `initMsdf` bake it, and `draw()` gets the quads
+      fifth. The legacy `Font` path is a missing-font fallback only. See
+      [`GUI.md`](GUI.md) §5 for why (the outline path's winding fill is `SS=1`).
 - [x] **Headless capture** — `klend_ario_capture` renders fixture weeks through
       `VK_EXT_headless_surface` to PNG, so the view can be reviewed (and
       regressions seen) with no compositor.
@@ -310,6 +315,20 @@ Newest first. One line per meaningful change.
   expanded `week_layout_test`) bring the parent to 32. Verified by building
   `-DKLEND_BUILD_GUI=ON`, four headless captures, and a live Wayland window that
   showed a CLI edit within a second. No submodule change.
+
+- **GUI text: RasterFont + readable floor (2026-10-18).** The weekly view's text
+  moved off the legacy `Font` outline path, whose winding fill is `SS=1` and
+  therefore 1-bit (a capture crop had exactly two colours while the SDF boxes
+  were smooth). It now uses `RasterFont`: `text_inputs` collects the codepoint
+  and integer-size set before the scene, `ensureGlyphs` bakes true FreeType
+  coverage into an R8 atlas (1455 cells, 4 MB, 11 ms for the mixed-week capture),
+  `initMsdf` uploads it, and `draw()` receives the quads fifth. Also added the
+  generated `kMinReadableTextSizePx` clamp (16 px for `ui.otf`, passed from the
+  GUI so `klend_ario_view` stays pure) and a 0.30 em descent allowance in the
+  text clip. New `text_inputs_test`; `theme_test` covers the floor. Verified at
+  1920x1080 and 1280x720 (hundreds of edge colours, no clipped `p` tails) and in
+  a live 1200x700 window. No submodule change; the decisions live in
+  [`GUI.md`](GUI.md).
 
 - **MCP smoke hardened (2026-10-17).** `demo/mcp_smoke.py` now covers 66 checks:
   protocol resilience (malformed/whitespace frames, string ids, batching,

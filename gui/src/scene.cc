@@ -95,11 +95,11 @@ std::string fitText(std::string_view text, int size, int maxWidth, const TextMet
 } // namespace
 
 Scene buildWeekScene(int width, int height, const WeekModel &week, long long nowUtc,
-                     const TextMetrics &text, const Theme &theme) {
+                     const TextMetrics &text, const Theme &theme, int minTextPx) {
     Scene scene;
     const Frame frame = frameFor(width, height);
     const Rect &content = frame.content;
-    const UiMetrics m = metricsFor(content);
+    const UiMetrics m = metricsFor(content, minTextPx);
     const WeekGrid grid = weekGrid(content, m.topBarHeight + m.dayBarHeight);
 
     const Rect topBar{content.x, content.y, content.w, m.topBarHeight};

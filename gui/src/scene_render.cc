@@ -5,6 +5,7 @@
 
 #include "canvas.hh"
 #include "font.hh"
+#include "text_font.hh"
 
 namespace klend_ario::gui {
 namespace {
@@ -16,10 +17,17 @@ namespace {
 } // namespace
 
 int FontTextMetrics::width(std::string_view text, int sizePx) const {
-    if (font_ == nullptr || text.empty() || sizePx <= 0) {
+    if (text.empty() || sizePx <= 0) {
         return 0;
     }
-    return static_cast<int>(std::lround(font_->stringWidth(text, static_cast<float>(sizePx))));
+    if (text_ != nullptr) {
+        return static_cast<int>(std::lround(text_->textWidth(text, static_cast<float>(sizePx))));
+    }
+    if (outline_ != nullptr) {
+        return static_cast<int>(
+            std::lround(outline_->stringWidth(text, static_cast<float>(sizePx))));
+    }
+    return 0;
 }
 
 void drawScene(Canvas &canvas, const Scene &scene) {
@@ -51,11 +59,15 @@ void drawScene(Canvas &canvas, const Scene &scene) {
 
         case OpKind::Text: {
             // The op's rect is the anchor box: horizontally aligned inside it,
-            // and CLIPPED to it so a long title can never bleed into the
-            // neighbouring day. Canvas text y is the top of the box.
-            canvas.setClip(static_cast<float>(r.x), static_cast<float>(r.y),
-                           static_cast<float>(r.w), static_cast<float>(r.h));
+            // and clipped so a long title can never bleed into the neighbouring
+            // day. Canvas text y is the top of the em box and the baseline is
+            // y + size, so descenders (p/g/y) live BELOW the op rect. Extend
+            // only the clip by a descent allowance: the baseline, the y advance
+            // and the scene's tiering stay exactly as the scene decided.
             const float size = static_cast<float>(op.size);
+            const float descent = std::max(1.0f, size * 0.30f);
+            canvas.setClip(static_cast<float>(r.x), static_cast<float>(r.y),
+                           static_cast<float>(r.w), static_cast<float>(r.h) + descent);
             const float top = static_cast<float>(r.y);
             switch (op.align) {
             case Align::Left:
