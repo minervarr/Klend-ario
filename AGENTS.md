@@ -10,6 +10,9 @@ The non-negotiables, so they apply even before you read further:
   it must not know a frontend exists.
 - **The database lives in `arc::fs::layout("klend_ario").state`** — never in
   `home`/`data`, never beside the executable.
+- **Never create the user's directories** — startup uses `LayoutScope::App`;
+  Music/Downloads/Pictures/Documents are resolved from `user-dirs.dirs`, not
+  invented or created by opening a database.
 - **Namespace `klend_ario::`; targets `klend_ario_core` / `klend_ario_cli`** —
   never reuse the `ae`, `arc`, or `vce` prefixes (they belong to sibling libs).
 - **CMake + Ninja only.** Tests are plain `assert()` binaries registered with

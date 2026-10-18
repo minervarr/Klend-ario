@@ -88,6 +88,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Build directories | `build/` = Debug (the dev loop; tests are Debug-only), `build_release/` = Release |
 | Encryption | **SQLite3MultipleCiphers 2.6.1**, page-level, pinned to **ChaCha20-Poly1305** (`PRAGMA cipher='chacha20'` before `sqlite3_key`); passphrase-derived, no keyfile format of our own |
 | DB location | `arc::fs::Layout.state` — machine data, never `home`/`data` |
+| Startup directories | `arc::fs::ensureLayout(layout, LayoutScope::App)` creates only `state`/`cache`/`config`/`data`. The user's `Music`/`Downloads`/`Pictures`/`Documents` are resolved from `user-dirs.dirs` and never created implicitly |
 | Error type | `arc::Result<T>` / `arc::Error` from `arc_util` |
 | `archive_engine` | git submodule at `libs/firstparty/archive_engine` |
 | `pe-holiday-calc` | git submodule at `libs/firstparty/pe-holiday-calc` (Codeberg, pinned to the child's `master`); first-party C++17 holiday library, built with `add_subdirectory` (tests ON, example OFF). `klend_ario_core` links `pe_holiday_calc`; `core/src/holidays.cc` adapts its `std::optional` answers to `arc::Result` behind `core/include/klend_ario/holidays.hh` |
@@ -161,6 +162,11 @@ These are truths this workspace already paid for. Do not relearn them.
   `home`/`data` (user-visible, portable). The DB goes in `state`.
 - **A companion filesystem layout is the user's, not ours.** Find sidecars with
   `arc::fs::ancestorsUpTo()` rather than assuming a depth.
+- **Do not create the user's directories.** `arc::fs::layout()` resolves
+  Music/Downloads/Pictures/Documents from `user-dirs.dirs`, falling back to the
+  conventional names only when it is absent. Klend-ario opens with
+  `ensureLayout(..., LayoutScope::App)`, so a database open never leaves empty
+  `~/Music`, `~/Downloads`, `~/Pictures`, or `~/Documents` behind.
 - **Submodules push before parents.** A fresh recursive clone points at gitlinks
   the remote must already have. `./git_wrapper` enforces the order; a manual
   `git push` in the wrong order is how clones break.

@@ -59,7 +59,7 @@ const char *versionString() {
 std::string defaultDbPath(bool create) {
     const arc::fs::Layout layout = arc::fs::layout("klend_ario");
     if (create) {
-        arc::fs::ensureLayout(layout);
+        arc::fs::ensureLayout(layout, arc::fs::LayoutScope::App);
     }
     return arc::fs::join(layout.state, "klend_ario.db");
 }

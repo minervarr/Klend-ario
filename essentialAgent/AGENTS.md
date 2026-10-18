@@ -46,7 +46,10 @@ Klend-ario/
    server exists. Frontends link core; core never links a frontend.
 3. **The database lives in `state`.** Path is
    `arc::fs::layout("klend_ario").state`. Never `home`, `data`, or beside the
-   executable. (`MEMORY.md` §5 explains the FUSE reason.)
+   executable. (`MEMORY.md` §5 explains the FUSE reason.) Startup prepares it
+   with `ensureLayout(layout, LayoutScope::App)`: the app creates its own
+   config/data/state/cache, never the user's Music/Downloads/Pictures/
+   Documents.
 4. **Naming:** namespace `klend_ario::`; targets `klend_ario_core`,
    `klend_ario_cli`; tests `<name>_test`. Never reuse `ae`, `arc`, or `vce`
    prefixes — those belong to sibling libraries.

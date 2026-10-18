@@ -37,7 +37,7 @@ const char *kUsage = "klend_ario_alarmd — fires calendar alarms as they come d
 
 std::string defaultDbPath() {
     const arc::fs::Layout layout = arc::fs::layout("klend_ario");
-    arc::fs::ensureLayout(layout);
+    arc::fs::ensureLayout(layout, arc::fs::LayoutScope::App);
     return arc::fs::join(layout.state, "klend_ario.db");
 }
 
