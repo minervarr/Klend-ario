@@ -11,6 +11,7 @@
 // server are the write paths, and a viewer that cannot corrupt the calendar is
 // the smallest honest first GUI. Editing is the next slice.
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@ struct ViewOptions {
     std::string dbPath;   // empty = the app's state database
     std::string keyFile;  // empty = $KLEND_ARIO_KEY, then none
     bool showHidden = false;
+    bool fullscreen = false; // windowed 1280x720 by default; see create()
 };
 
 class WeekView : public AppView {
@@ -58,7 +60,7 @@ private:
     bool openDatabase(const ViewOptions &options);
     bool loadFont();
     void ensureText();
-    void reload();
+    bool reload();
     void drawFrame();
     void goToWeek(long long anchorUtc);
     void setCursorFor(int x, int y);
@@ -76,6 +78,7 @@ private:
 
     long long anchorUtc_ = 0; // an instant inside the week being shown
     long long nowUtc_ = 0;
+    long long drawnNowUtc_ = 0; // the `now` the last built scene used
     long long dataVersion_ = -1;
     bool followingNow_ = true; // false while browsing another week
 
@@ -90,6 +93,10 @@ private:
     std::vector<float> textQuads_;
     std::vector<int> glyphSizes_; // the size set currently baked in font_
     int minTextPx_ = 0;           // kMinReadableTextSizePx, passed to the scene
+    uint32_t textWidth_ = 0;      // the renderer extent the glyphs were baked for
+    uint32_t textHeight_ = 0;
+    bool textDirty_ = true;       // codepoints/sizes may have changed
+    bool redrawAgain_ = false;    // drawFrame() saw the extent move mid-draw
     int pendingFrames_ = 1;
     bool running_ = true;
     int lastCursor_ = -1;

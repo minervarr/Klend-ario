@@ -16,6 +16,7 @@
 #include "klend_ario/query.hh"
 #include "klend_ario/sync.hh"
 #include "raster_font.hh"
+#include "refresh.hh"
 #include "renderer.hh"
 #include "scene_render.hh"
 #include "text_inputs.hh"
@@ -63,6 +64,15 @@ bool WeekView::create(const ViewOptions &options) {
         std::fprintf(stderr, "error: no window host available on this platform\n");
         return false;
     }
+    // The weekly view is designed 16:9, and 1280x720 is the cheapest clean
+    // surface. Windowed also keeps a 4K desktop from handing the app a 4K
+    // swapchain (four full-screen images) it does not need. `--fullscreen`
+    // restores the historical mode; a tiling compositor sizes the tile itself.
+    WindowOptions window;
+    window.width = 1280;
+    window.height = 720;
+    window.fullscreen = options.fullscreen;
+    host_->setWindowOptions(window);
     if (!host_->init(this)) {
         std::fprintf(stderr, "error: could not create the window\n");
         return false;
@@ -78,8 +88,14 @@ bool WeekView::create(const ViewOptions &options) {
     }
 
     try {
+        // A viewer drawn on a clock, not a live preview: FIFO paces it and there
+        // is no "newest frame" to prefer (PresentPolicy in vk_canvas). Two
+        // images is Vulkan's minimum and enough for FIFO — MAILBOX is the policy
+        // that wants three or more. The surface may clamp it upward (sway
+        // advertises a minimum of 4), which is fine and expected.
         renderer_ = std::make_unique<Renderer>(host_->surfaceProvider(), host_->assetReader(),
-                                               /*desiredSwapchainImages=*/3);
+                                               /*desiredSwapchainImages=*/2, OutputTarget::SdrSrgb,
+                                               PresentPolicy::Vsync);
     } catch (const std::exception &e) {
         host_->showErrorMessage("Vulkan initialization failed", e.what());
         std::fprintf(stderr, "error: Vulkan initialization failed: %s\n", e.what());
@@ -96,6 +112,7 @@ bool WeekView::create(const ViewOptions &options) {
     // milliseconds with FreeType, and paying it behind a black window is worse
     // than paying it once at startup.
     ensureText();
+    textDirty_ = false; // baked for this extent; the first frame re-checks it
 
     host_->startTimer(kPollTimer, 1000);
     host_->showWindow();
@@ -171,12 +188,22 @@ bool WeekView::loadFont() {
 }
 
 void WeekView::ensureText() {
-    if (!font_ || renderer_ == nullptr) {
+    if (renderer_ == nullptr) {
         return;
     }
 
-    const int width = static_cast<int>(renderer_->width());
-    const int height = static_cast<int>(renderer_->height());
+    // Record the extent this bake is for. drawFrame() re-arms a bake when the
+    // renderer's extent moves — including the recreate that happens INSIDE
+    // draw(), one frame after onHostResized() — because the role sizes are
+    // derived from the content rect.
+    textWidth_ = renderer_->width();
+    textHeight_ = renderer_->height();
+    if (!font_) {
+        return;
+    }
+
+    const int width = static_cast<int>(textWidth_);
+    const int height = static_cast<int>(textHeight_);
     const UiMetrics metrics = metricsFor(frameFor(width, height).content, minTextPx_);
     const TextInputs inputs = collectTextInputs(week_, metrics);
     if (inputs.codepoints.empty() || inputs.sizesPx.empty()) {
@@ -196,19 +223,22 @@ void WeekView::ensureText() {
     }
 }
 
-void WeekView::reload() {
+bool WeekView::reload() {
     if (!dbOpen_) {
-        return;
+        return false;
     }
     const auto visibility = showHidden_ ? klend_ario::Visibility::Any
                                         : klend_ario::Visibility::Visible;
     auto model = loadWeekModel(db_, anchorUtc_, nowUtc_, visibility);
     if (!model) {
         std::fprintf(stderr, "error: %s\n", model.error().message.c_str());
-        return;
+        return false;
     }
     week_ = std::move(model.value());
+    // A new week means new titles: the baked codepoint set may not cover them.
+    textDirty_ = true;
     pendingFrames_ = 1;
+    return true;
 }
 
 void WeekView::goToWeek(long long anchorUtc) {
@@ -235,6 +265,12 @@ void WeekView::run() {
         if (font_ && font_->hasMisses()) {
             pendingFrames_ = 1;
         }
+        // Same rule for a swapchain recreate that landed mid-draw: the scene it
+        // rendered was measured at the old extent, so one more frame is owed.
+        if (redrawAgain_) {
+            redrawAgain_ = false;
+            pendingFrames_ = 1;
+        }
     }
 }
 
@@ -249,7 +285,17 @@ void WeekView::drawFrame() {
             renderer_->initMsdf(*font_);
         }
     }
-    ensureText();
+    // The glyph sizes follow the content rect, which follows the extent. Compare
+    // extents rather than trusting the resize callback: recreate_swapchain()
+    // runs inside draw(), so the frame right after onHostResized() still reports
+    // the OLD extent.
+    if (width != textWidth_ || height != textHeight_) {
+        textDirty_ = true;
+    }
+    if (textDirty_) {
+        ensureText();
+        textDirty_ = false;
+    }
 
     const FontTextMetrics metrics(font_.get(), outlineFont_.get());
 
@@ -258,6 +304,9 @@ void WeekView::drawFrame() {
     textQuads_.clear();
     scene_ = buildWeekScene(static_cast<int>(width), static_cast<int>(height), week_, nowUtc_,
                             metrics, theme_, minTextPx_);
+    // The now-line position this scene was built for. onTimer() compares
+    // against it instead of repainting every second.
+    drawnNowUtc_ = nowUtc_;
 
     Canvas canvas(curves_, width, height, outlineFont_.get(), 0.0f, 0.0f, 0.0f, 0.0f);
     canvas.useShapes(&shapes_);
@@ -269,11 +318,35 @@ void WeekView::drawFrame() {
     // the shape slot gives a blank text layer and a shape pipeline that reads
     // glyph vertices as rectangles.
     renderer_->draw(curves_, /*overlay_rotation_deg=*/0, {}, {}, textQuads_, shapes_);
+
+    // draw() is where a resized surface recreates its swapchain, which changes
+    // the renderer's extent AFTER this scene was measured at the old one. The
+    // next frame must be built at the new size; at a once-a-minute cadence
+    // nothing else would correct the stretch. run() consumes the flag, because
+    // pendingFrames_ set here would be cleared right after drawFrame().
+    if (renderer_->width() != width || renderer_->height() != height) {
+        textDirty_ = true;
+        redrawAgain_ = true;
+    }
 }
 
-void WeekView::onHostResized() { pendingFrames_ = 1; }
+void WeekView::onHostResized() {
+    // The scene and the glyph sizes read the RENDERER's extent, and the
+    // renderer only learns the surface's new size when its swapchain is
+    // recreated. Do that here so the frame armed below is built at the real
+    // size, not at the previous one.
+    if (renderer_ != nullptr) {
+        renderer_->notifyResized();
+    }
+    textDirty_ = true;
+    pendingFrames_ = 1;
+}
 
-void WeekView::onHostLayoutInvalidated() { pendingFrames_ = 1; }
+void WeekView::onHostLayoutInvalidated() {
+    // Insets can change the content rect the type sizes are derived from.
+    textDirty_ = true;
+    pendingFrames_ = 1;
+}
 
 void WeekView::onHostExposed() { pendingFrames_ = 1; }
 
@@ -354,31 +427,59 @@ void WeekView::onTimer(int timerId) {
         return;
     }
 
-    // The now-line moves, so a frame is always due; the WEEK and the ROWS are
-    // only reloaded when they actually changed.
+    // The timer is a POLL, not a paint. It runs once a second because that is
+    // the product's "an AI edit appears live" contract, but a frame is owed
+    // only when the clock or the database says something visible changed. This
+    // used to end with an unconditional pendingFrames_ = 1, which repainted an
+    // identical full-screen frame every second. See GUI_PERFORMANCE.md.
     nowUtc_ = klend_ario::utcNowSeconds();
 
-    bool changed = false;
-    if (auto version = db_.dataVersion(); version.ok() && version.value() != dataVersion_) {
-        // Another process (CLI or MCP server) committed. This is how an AI edit
-        // reaches an open window without a socket or a file watcher.
-        dataVersion_ = version.value();
-        changed = true;
+    bool dataChanged = false;
+    long long observedVersion = dataVersion_;
+    if (auto version = db_.dataVersion(); version.ok()) {
+        observedVersion = version.value();
+        dataChanged = observedVersion != dataVersion_;
     }
-    // Following "now" across a week boundary: if the user has not browsed away,
-    // the view should be showing the new current week, not last week's.
-    if (followingNow_) {
-        const long long previousSunday = localWeekContaining(anchorUtc_).days[0].startUtc;
-        const long long currentSunday = localWeekContaining(nowUtc_).days[0].startUtc;
-        if (previousSunday != currentSunday) {
-            anchorUtc_ = nowUtc_;
-            changed = true;
+
+    RefreshInputs in;
+    in.nowUtc = nowUtc_;
+    in.drawnNowUtc = drawnNowUtc_;
+    in.weekStartUtc = week_.days.front().day.startUtc;
+    in.weekEndUtc = week_.days.back().day.endUtc;
+    in.dataChanged = dataChanged;
+    in.followingNow = followingNow_;
+    for (const DayInfo &day : week_.days) {
+        if (!day.isToday) {
+            continue;
+        }
+        in.weekHadToday = true;
+        if (nowUtc_ >= day.day.startUtc && nowUtc_ < day.day.endUtc) {
+            in.shownDayIsToday = true;
         }
     }
-    if (changed) {
-        reload();
+
+    const Refresh decision = refreshDecision(in);
+    if (decision == Refresh::None) {
+        return;
     }
-    pendingFrames_ = 1;
+
+    if (decision == Refresh::Redraw) {
+        pendingFrames_ = 1;
+        return;
+    }
+
+    // Reload. Following "now" out of the shown week moves the anchor to the
+    // new current week; the same rollover while BROWSING must not jump the
+    // user anywhere — it only clears the now-line and today tint that are now
+    // stale.
+    if (followingNow_ && (nowUtc_ < in.weekStartUtc || nowUtc_ >= in.weekEndUtc)) {
+        anchorUtc_ = nowUtc_;
+    }
+    // Advance the version only once the query succeeded: a transient database
+    // error must be retried on the next tick, not silence the poll forever.
+    if (reload() && dataChanged) {
+        dataVersion_ = observedVersion;
+    }
 }
 
 void WeekView::shutdown() {

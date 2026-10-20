@@ -14,6 +14,7 @@ Klend-ario/
 ├── opencode.jsonc                # wires essentialAgent/ into OpenCode
 ├── essentialAgent/               # the agent manual (this folder)
 │   ├── GUI.md                    # weekly view: layers, text pipeline, capture, traps
+│   ├── GUI_PERFORMANCE.md        # limited-resources plan: repaint, device, window
 │   └── REQUIREMENTS.md           # captured 2026-10-16 notes (source + normalized)
 ├── merged.md                     # the product plan ("Openseek")
 ├── manifest.json                 # name/version/platforms/build
@@ -213,6 +214,10 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   `openEncryptedReadOnly` and notices other processes through
   `Db::dataVersion()`, polled once a second. Do not add a write path without
   deciding the edit surface (CLI-parity fields, `*Given` semantics).
+- **Repaint is a decision, not a tick.** Before changing the window loop, read
+  [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md): the 1 s timer is meant to poll,
+  and a frame is meant to be armed only when something visible changed. Any
+  change here needs a before/after measurement (`MEMORY.md` §5).
 - Every comment that explains a *surprising* choice is worth its weight. Every
   comment that restates the code is noise (`MEMORY.md` §5).
 

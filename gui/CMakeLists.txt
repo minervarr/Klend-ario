@@ -22,7 +22,8 @@ add_library(klend_ario_view STATIC
     src/theme.cc
     src/scene.cc
     src/week_store.cc
-    src/text_inputs.cc)
+    src/text_inputs.cc
+    src/refresh.cc)
 
 target_include_directories(klend_ario_view PUBLIC src)
 target_link_libraries(klend_ario_view PUBLIC klend_ario_core)
@@ -65,6 +66,13 @@ klend_ario_add_test(scene_test
 klend_ario_add_test(text_inputs_test
     SOURCES  tests/text_inputs_test.cc src/text_inputs.cc
     INCLUDES src ${CMAKE_SOURCE_DIR}/core/include)
+
+# Repaint policy: whether a tick needs nothing, a redraw of the now-line, or a
+# full reload. Pure — no window, no clock, no GPU — so browsing, midnight and
+# the half-open week boundary are asserted instead of watched.
+klend_ario_add_test(refresh_test
+    SOURCES  tests/refresh_test.cc src/refresh.cc
+    INCLUDES src)
 
 # The database-to-view bridge: one query, seven local days, the week label and
 # the holidays. Uses an in-memory database and a pinned zone; no GPU, no window.

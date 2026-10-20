@@ -194,6 +194,12 @@ write paths, so the first GUI cannot corrupt a calendar.
       regressions seen) with no compositor.
 - [x] **Wiring** — `-DKLEND_BUILD_GUI=ON`; shaders via `VceShaders`, `slangc`
       from the cache/`$VULKAN_SDK`/`PATH`; fonts+shaders copied beside the exe.
+- [x] **Performance pass (2026-10-20)** — demand-driven repaint (the timer is a
+      poll, not a paint), midnight reload, device/present-queue selection in
+      `vk_canvas`, opt-in windowed mode in `App_shell`, `Vsync`/2 images.
+      Measured before/after per [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md):
+      0 frames while browsing, 1/minute on the current week, 0.00 % CPU.
+      Landed before 4b because editing will add more redraw paths.
 - [ ] **4b — editing** — create/edit/delete from the GUI with CLI-parity fields
       (`*Given` semantics), then alarms hooked into the window.
 - [ ] **4c — overlay / print** — still post-MVP per `merged.md` §5.4–5.5.
@@ -293,6 +299,24 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **GUI performance pass — demand-driven repaint (2026-10-20).** The weekly
+  view no longer repaints once a second. `gui/src/refresh.*` is a pure
+  None/Redraw/Reload decision over the clock, the shown week and
+  `Db::dataVersion()`; `WeekView` arms a frame only for a data change, a local
+  midnight, a week rollover, or a 60 s now-line step, and does nothing while
+  browsing a week that contains no "now". Text bakes on a dirty flag keyed to
+  the renderer extent, and `onHostResized()` calls `notifyResized()` so a resize
+  is not one frame stale. Measured Debug: browsing 30 s = 0 frames, current week
+  70 s = 3 frames (two startup), CPU 0 ticks. `vk_canvas` now requires
+  `VK_KHR_swapchain` and a graphics+present queue family, prefers a non-CPU
+  device, uses the chosen family instead of literal 0, and logs
+  `Device: <name> (<type>)`. `App_shell` gained a pre-init
+  `setWindowOptions()`; the view asks for 1280x720 windowed (`--fullscreen`
+  restores the old mode). New `refresh_test` (10 cases) brings ctest to 34.
+  Captures unchanged (200 edge colours). Child commits: vk_canvas `6e30e7f`,
+  App_shell `86f8b38`; pins advanced. Decisions and the before/after table live
+  in [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md).
 
 - **Build tool knows the GUI (2026-10-17).** `klend_ario_builder.pyz` now probes
   for the weekly view's build prerequisites (`slangc`/`$VULKAN_SDK` and the

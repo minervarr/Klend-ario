@@ -20,6 +20,11 @@ The pure half (`klend_ario_view` and its suites) always builds. The window and
 the capture tool need `-DKLEND_BUILD_GUI=ON`, the Vulkan SDK, `slangc` and the
 Wayland/xkb development packages.
 
+A performance pass **shipped on 2026-10-20**: the repaint policy, device
+selection and windowed mode are implemented and measured —
+[`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md) has the before/after table. §9 below
+describes the timer as a poll for that reason.
+
 ## 2. The shape: three layers, only one needs a GPU
 
 ```
@@ -217,8 +222,17 @@ and "today"/"Sep" (`y`/`p`) after any clip change.
 - Hidden rows are a query choice (`Visibility::Any` with `--hidden`); the scene
   draws what it is given. `EventType::Alarm` is a reminder, not a block.
 - `Db::dataVersion()` is polled once a second; a commit by another process (CLI
-  or MCP) reloads the week. The now-line is recomputed every tick. This is how
-  an AI edit reaches an open window without a socket or file watcher.
+  or MCP) reloads the week. This is how an AI edit reaches an open window
+  without a socket or file watcher.
+- The timer is a **poll, not a paint** (`gui/src/refresh.*`, `refresh_test`). A
+  frame is armed only when something visible changed: a reload on a data-version
+  change, a local midnight, or a week rollover; a scene rebuild when the
+  now-line is 60 s old; and nothing at all while browsing a week that contains
+  no "now". Text is re-baked only when the week or the renderer extent changed.
+  Measured 2026-10-20: **0 frames while browsing**, and two startup frames plus
+  one per minute on the current week, with CPU at 0.00 % of a core. See
+  [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md) §2 for the table and §6 for the
+  acceptance evidence.
 - Sync conflict copies are reported on startup, never merged (`MEMORY.md` §7).
 - No write path until 4b. Do not add one without deciding the edit surface
   (CLI-parity fields, `*Given` semantics).
@@ -322,6 +336,21 @@ Keys: `Left`/`Right` previous/next week, `T` today, `H` toggle hidden blocks,
   made, tested and pushed in the child, then the parent pin advances.
 
 ## 15. Decision log
+
+- **2026-10-20 — demand-driven repaint, device picking, windowed mode
+  (GUI_PERFORMANCE.md A–C).** The 1 s timer became a poll: `gui/src/refresh.*`
+  decides None/Redraw/Reload from the clock, the shown week and
+  `Db::dataVersion()`, with `refresh_test` pinning browsing, midnight, the
+  half-open week boundary and the 60 s now-line cadence. Text bakes on a dirty
+  flag keyed to the renderer extent (a resize recreates the swapchain inside
+  `draw()`, so the callback alone is one frame early). `Renderer` now requires
+  `VK_KHR_swapchain` + a graphics/present queue family, skips a CPU device when
+  a real one exists, and logs `Device: …`; the queue family is used everywhere
+  instead of a literal 0. `Host::setWindowOptions` makes windowed mode an opt-in
+  request, and the weekly view asks for 1280x720 (`--fullscreen` restores the
+  old mode). Measured: 0 frames browsing, ≤1/min on the current week, 0.00 % CPU,
+  captures unchanged; `swapchainImageCount()` stays 4 on sway because that is
+  the surface minimum.
 
 - **2026-10-17 — Phase 4a.** Read-only weekly view, scene + window + headless
   capture. Text initially used the legacy `Font` outline path.
