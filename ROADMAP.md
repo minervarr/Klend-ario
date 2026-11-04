@@ -1,11 +1,21 @@
 # ROADMAP — what is left to finish
 
-**Status:** 2026-11-04
+**Status:** 2026-11-04 · handoff after `8731a06`
+**Next action:** measure the edit path (§4.4, §17). Everything else in
+Milestone 1 is functional.
 **Baseline:** 37/37 CTest suites pass; `demo/klend_ario_demo.py` exits `0`;
-the weekly view builds, runs and captures headlessly.
+the weekly view builds in Debug and Release; headless capture writes 6/6
+scenarios at 1920×1080 and 1280×720.
 **Relationship to `PLAN.md`:** this file is the forward-looking finish line.
 [`essentialAgent/PLAN.md`](essentialAgent/PLAN.md) remains the detailed phase
 tracker and status log. Close a milestone in both files in the same change.
+
+**Verification rule (2026-11-04): never launch the GUI or take pointer/keyboard
+focus for a check.** Use `ctest` and the headless `klend_ario_capture`; a live
+window is only for a change that cannot be verified headlessly, and only after
+the user agrees. Moving focus interrupts real work and is not a harmless test
+step. The live `F12` path was already verified in Debug and Release at
+`b947d08`; do not re-run it for unrelated changes.
 
 ---
 
@@ -62,7 +72,12 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
   demand-driven repaint, headless capture.
 - 4b (2026-11-04): modal editor, text input, writable DB with revision CAS,
   local-time inverse with DST flags, `event:<id>` scene hit targets and
-  selection. Create/edit/delete verified in a live Debug and Release window.
+  selection. Create/edit/delete verified in a live Debug and Release window at
+  `b947d08`; from now on, use headless capture instead.
+- R8 editor time display (2026-11-04): each local start/end field shows the
+  resolved `UTC YYYY-MM-DD HH:MMZ` instant underneath. The hint shares
+  `resolveEditorField` with Save, including the unchanged fall-back rule; a
+  malformed field shows `UTC --`. Pinned by `editor_test`/`editor_scene_test`.
 - `F12` captures the live window natively in Debug and Release, including the
   modal; the headless fixture tool is unchanged.
 - `opencode.jsonc` restored; the repo skill and MCP server load from the
@@ -73,6 +88,9 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
 ### Not done
 
 - 4c overlay/print.
+- 4b refinements: a new event starts at "now", not the clicked slot; `Esc`
+  discards a dirty form without warning; notes is single-line; the next-alarm
+  display is optional. None blocks Milestone 2.
 - PipeWire sound (the named Phase 6 gap); daemon autostart/single-instance.
 - Key UX: no passphrase prompt; no first-run encrypted setup; encryption is
   opt-in via file/env despite the recorded "encrypted by default" decision.
@@ -99,10 +117,12 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
 
 ---
 
-## 4. Milestone 1 — Phase 4b: edit in the weekly view (L)
+## 4. Milestone 1 — Phase 4b: edit in the weekly view (functionally done 2026-11-04)
 
-The largest remaining product item. Read-only is no longer enough: the GUI must
-be a first-class writer without becoming a second source of truth.
+The editor, write path, revision CAS, `F12` screenshot and UTC time display are
+shipped. What remains is the performance measurement and three optional
+refinements; the milestone's functional gate is met, but do not mark the section
+complete until the edit path is measured.
 
 ### 4.1 Core safety — done
 
@@ -125,8 +145,9 @@ be a first-class writer without becoming a second source of truth.
 - [x] **Selection navigation.** Click selects; second click/Enter edits; `N`
       creates; `Delete` asks twice. Week navigation is disabled while the
       modal is open.
-- [ ] **Create at the clicked slot.** `N` starts at the current instant, not
-      the empty slot under the pointer. Later refinement, not a blocker.
+- [ ] **Optional: create at the clicked slot.** `N` starts at the current
+      instant, not the empty slot under the pointer. Later refinement, not a
+      blocker and not part of the 1.0 gate.
 
 ### 4.3 Editor UI
 
@@ -137,7 +158,9 @@ be a first-class writer without becoming a second source of truth.
       hidden, notes (single-line in v1). Reuses `TextFieldState` and the host
       clipboard; no second text engine.
 - [x] Defaults: new event starts now, one hour; title focused; `Esc` cancels.
-      Dirty-state warning is not implemented; `Esc` discards without asking.
+- [ ] **Optional: dirty-state warning.** `Esc` currently discards a modified
+      form without asking. Add only if the form grows enough to make that loss
+      likely; not a 1.0 blocker.
 - [x] Time input: the form shows the local wall clock **and** the resolved UTC
       instant under each field, from the same resolver Save uses. A nonexistent
       DST time is refused; an ambiguous one requires a second Save and names the
@@ -154,8 +177,11 @@ be a first-class writer without becoming a second source of truth.
 - [x] Save → reload the week → arm one frame. The editor closes on success.
 - [x] External change while the editor is open: `dataVersion` reload shows a
       warning; the save carries the original revision and is refused if stale.
-- [ ] Measure the edit path (frames, save time, re-bake) per
-      `GUI_PERFORMANCE.md`; record before/after. The screenshot path does not
+- [ ] **Measure the edit path** — save time (insert and CAS update over a
+      throwaway DB), frames from the keypress/closing of the modal to the
+      redrawn week, and whether text is re-baked. Record before/after in
+      `GUI_PERFORMANCE.md`. Prefer a timed test or a headless driver; **do not
+      launch a window or steal focus for this**. The screenshot path does not
       affect the idle repaint policy.
 - [x] **In-app screenshot** — `F12` renders with present disabled, reads the
       frame back, writes PNG to `--screenshot-dir`/the app's data directory,
@@ -166,12 +192,13 @@ be a first-class writer without becoming a second source of truth.
 - [x] The daemon is the only alarm owner (recorded D2). The GUI does not fire
       its own.
 - [x] The selected event's alarm offset is an editable field.
-- [ ] Display the next upcoming alarm in the window. Optional; the daemon is
-      the delivery path.
+- [ ] **Optional: display the next upcoming alarm** in the window. The daemon
+      remains the delivery path.
 
 **Done when:** create/edit/delete survive restart; the CLI and MCP see the
 changes; a stale save is rejected; `ctest` and the demo stay green; captures are
-updated; the edit path is measured (still open).
+updated; the edit path is measured. Functional work is done; the measurement is
+the only open gate.
 
 ---
 
@@ -427,7 +454,7 @@ Source: R4; open question 6.
 | D2 | Alarm owner: daemon-only; GUI may display, not deliver | **decided 2026-11-04** | `MEMORY.md` §4/§9 |
 | D3 | Encryption by default; explicit opt-out; flag > env > prompt > error | **decided 2026-11-04**, implementation pending | `MEMORY.md` §7 |
 | D4 | User-local install; tarball; systemd unit + XDG fallback | **decided 2026-11-04**, implementation pending | `MEMORY.md` §4 |
-| D5 | System local + UTC display; launch-time `--timezone`; CLI UTC-only | **decided 2026-11-04**, implementation pending | `MEMORY.md` §4 |
+| D5 | System local + UTC display; launch-time `--timezone`; CLI UTC-only | **decided 2026-11-04**; editor UTC display implemented, `--timezone` pending | `MEMORY.md` §4 |
 | D6 | Sleep settings surface, scheduler owner, auto-hide rule, override | open — 1.1 | `REQUIREMENTS.md` R5 |
 | D7 | Notes cardinality, surface, export shape, MCP/CLI exception | open — 1.2 | `REQUIREMENTS.md` Q5 |
 | D8 | NTP: OS status vs in-app SNTP; warn vs set clock | open — 1.3 | `REQUIREMENTS.md` R9 |
@@ -444,7 +471,9 @@ Source: R4; open question 6.
   without the change; docs updated in the same change; `./git_wrapper` for the
   commit; submodules pushed before the parent pin.
 - Every GUI change: a headless capture review; measure any repaint-path change
-  before/after (`GUI_PERFORMANCE.md`).
+  before/after (`GUI_PERFORMANCE.md`). **Do not launch the GUI or move focus for
+  a check.** The live window is a last resort and needs the user's agreement;
+  the headless fixture captures are the default review surface.
 - Every surface change: the demo still exits `0`; the MCP smoke test still
   passes; completion and `TESTING.md` stay in sync.
 - Every release: install smoke, encrypted first-run, alarm sound/autostart, and
@@ -454,10 +483,29 @@ Source: R4; open question 6.
 
 ---
 
-## 17. Next actions
+## 17. Start here (new session)
 
-1. Measure the edit path (frame count, save time, re-bake) and record it.
-2. Milestone 2: PipeWire sound, daemon single-instance/autostart.
-3. Milestone 3: encrypted-by-default first run and key prompts.
-4. Milestone 4: install rules, desktop entry, systemd unit.
-5. Then the 1.1 sleep scheduler.
+Last commits: `8731a06` editor UTC hint · `b947d08` 4b editor + `F12`.
+Everything in the baseline is green; no known runtime regression.
+
+Verification, headless only:
+
+```bash
+ninja -C build
+ctest --test-dir build --output-on-failure
+cd build/gui && ./klend_ario_capture --out /tmp/klend-shots
+python3 demo/klend_ario_demo.py --no-color
+```
+
+Work order:
+
+1. **Measure the edit path** (Milestone 1's only open gate): save time, frames
+   to the redrawn week, text re-bake. Record it in `GUI_PERFORMANCE.md`; use a
+   timed test or a headless driver, never a focused window.
+2. **Milestone 2** — PipeWire sound, daemon single-instance/autostart.
+3. **Milestone 3** — encrypted-by-default first run and key prompts.
+4. **Milestone 4** — install rules, desktop entry, systemd unit.
+5. **Release 1.1** — the 10-hour sleep scheduler.
+
+Do not reopen the CLI (frozen) or add a sixth MCP tool without a recorded
+decision. Do not run the live GUI for verification.
