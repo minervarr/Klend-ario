@@ -369,6 +369,18 @@ open.
 
 ## 15. Decision log
 
+- **2026-11-04 — the edit path is measured, and it is cheap.** `gui/tools/edit_bench.cc`
+  (a tool, not a suite) times `saveEditorToDb`, `loadWeekModel`,
+  `buildWeekScene` and `RasterFont::ensureGlyphs` over a throwaway 216 KiB DB.
+  Release: insert + reload 281 µs, CAS update + reload 258 µs, reload 132 µs,
+  scene 28 µs. The atlas is NOT re-baked on save: `reload()` re-collects the
+  codepoint set (15 µs) and `ensureGlyphs` adds 0 cells; only a codepoint the
+  cache has never seen (12 cells, one per size) costs another frame. Encrypted
+  open is ~31 ms on the same file — the ChaCha20 KDF, not the rows — and is the
+  budget floor for the Milestone 3 unlock dialog. The save→presented-frame gap
+  is the one thing left to a live run, so the window logs one `edit:` line per
+  save without arming a frame.
+
 - **2026-11-04 — Phase 4b: editable view + native screenshot.** The pure form
   (`editor`) converts an Event to local fields and back, validates every field,
   and resolves DST gaps/repeats; `editor_scene` owns the modal's ops and hits;
@@ -439,3 +451,12 @@ selected event -> editorForEvent() -> EditorState (local strings)
   reads back RGBA, writes PNG, re-enables present and arms one redraw. The file
   goes to `--screenshot-dir` or the app's data directory. The dev capture tool
   is unchanged and still uses the headless surface for fixture scenarios.
+- **Save cost:** measured 2026-11-04 (`gui/tools/edit_bench.cc`, numbers in
+  `GUI_PERFORMANCE.md` §2.2). A Release save + reload is ~0.3 ms and adds **no**
+  atlas cells; `reload()` sets `textDirty_`, which re-collects the codepoint set
+  (~15 µs) but `ensureGlyphs` returns 0 added cells. A title with a codepoint
+  the week never used adds 12 cells (one per size) and one extra frame. Enter →
+  redrawn week is one frame because the key is handled before `drawFrame`.
+  `WeekView::saveEditor` writes one `edit: save … ms, reload … ms, redrawn week
+  … ms, +N atlas cells` line to the app log — the only number a headless tool
+  cannot measure (the present gap).

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -33,6 +34,11 @@ namespace {
 
 constexpr int kPollTimer = 1;
 constexpr long long kWeekSeconds = 7 * 86400;
+
+double millisBetween(std::chrono::steady_clock::time_point from,
+                     std::chrono::steady_clock::time_point to) {
+    return std::chrono::duration<double, std::milli>(to - from).count();
+}
 
 // Letters arrive in the Win32 VK space (ASCII uppercase); keys.hh names the
 // handful the engine itself uses, so the app's own keys live here.
@@ -286,9 +292,9 @@ bool WeekView::loadFont() {
     return false;
 }
 
-void WeekView::ensureText() {
+int WeekView::ensureText() {
     if (renderer_ == nullptr) {
-        return;
+        return 0;
     }
 
     // Record the extent this bake is for. drawFrame() re-arms a bake when the
@@ -298,7 +304,7 @@ void WeekView::ensureText() {
     textWidth_ = renderer_->width();
     textHeight_ = renderer_->height();
     if (!font_) {
-        return;
+        return 0;
     }
 
     const int width = static_cast<int>(textWidth_);
@@ -313,7 +319,7 @@ void WeekView::ensureText() {
             inputs, collectEditorTextInputs(editorTextStrings(editor_), editorSizes));
     }
     if (inputs.codepoints.empty() || inputs.sizesPx.empty()) {
-        return;
+        return 0;
     }
 
     // A resize changes the role sizes; a per-size cache would otherwise keep
@@ -327,6 +333,7 @@ void WeekView::ensureText() {
     if (added > 0 || !renderer_->msdfReady()) {
         renderer_->initMsdf(*font_);
     }
+    return added;
 }
 
 bool WeekView::reload() {
@@ -424,8 +431,9 @@ void WeekView::drawFrame() {
     if (width != textWidth_ || height != textHeight_) {
         textDirty_ = true;
     }
+    int bakedCells = 0;
     if (textDirty_) {
-        ensureText();
+        bakedCells = ensureText();
         textDirty_ = false;
     }
 
@@ -472,6 +480,20 @@ void WeekView::drawFrame() {
         renderer_->setPresentEnabled(false);
     }
     renderer_->draw(curves_, /*overlay_rotation_deg=*/0, {}, {}, textQuads_, shapes_);
+
+    if (editTimingPending_) {
+        // The one number headless tooling cannot produce: Save → a presented
+        // frame. One line per save, on the log the app already writes. It must
+        // never arm a frame — that would turn a measurement into a repaint.
+        editTimingPending_ = false;
+        const double frameMs =
+            millisBetween(editTimingStart_, std::chrono::steady_clock::now());
+        std::fprintf(stderr,
+                     "edit: save %.2f ms, reload %.2f ms, redrawn week %.2f ms, "
+                     "+%d atlas cells\n",
+                     editSaveMs_, editReloadMs_, frameMs, bakedCells);
+        std::fflush(stderr);
+    }
 
     if (screenshotFrame) {
         screenshotRequested_ = false;
@@ -824,15 +846,25 @@ void WeekView::saveEditor() {
     }
 
     std::string storedWarning;
+    const auto saveStarted = std::chrono::steady_clock::now();
     auto saved = saveEditorToDb(db_, editor_, storedWarning);
     if (!saved) {
         editor_.error = saved.error().message;
         pendingFrames_ = 1;
         return;
     }
+    const auto saveFinished = std::chrono::steady_clock::now();
     selectedEventId_ = saved.value();
     closeEditor();
     reload();
+    const auto reloadFinished = std::chrono::steady_clock::now();
+    // Reported by the frame that shows the result, not here: the interesting
+    // number is the distance to a drawn week, and only drawFrame() can see the
+    // present. It changes no repaint decision.
+    editSaveMs_ = millisBetween(saveStarted, saveFinished);
+    editReloadMs_ = millisBetween(saveFinished, reloadFinished);
+    editTimingStart_ = saveStarted;
+    editTimingPending_ = true;
 }
 
 void WeekView::deleteEditor() {

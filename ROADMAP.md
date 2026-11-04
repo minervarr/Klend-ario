@@ -1,11 +1,12 @@
 # ROADMAP — what is left to finish
 
-**Status:** 2026-11-04 · handoff after `8731a06`
-**Next action:** measure the edit path (§4.4, §17). Everything else in
-Milestone 1 is functional.
+**Status:** 2026-11-04 · handoff after the edit-path measurement
+**Next action:** Milestone 2 (§5) — PipeWire sound, then daemon
+single-instance/autostart. Milestone 1 is closed.
 **Baseline:** 37/37 CTest suites pass; `demo/klend_ario_demo.py` exits `0`;
 the weekly view builds in Debug and Release; headless capture writes 6/6
-scenarios at 1920×1080 and 1280×720.
+scenarios at 1920×1080 and 1280×720; the edit path is measured (Release save
+281 µs, load 132 µs, scene 28 µs — §2.2 of `GUI_PERFORMANCE.md`).
 **Relationship to `PLAN.md`:** this file is the forward-looking finish line.
 [`essentialAgent/PLAN.md`](essentialAgent/PLAN.md) remains the detailed phase
 tracker and status log. Close a milestone in both files in the same change.
@@ -78,6 +79,11 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
   resolved `UTC YYYY-MM-DD HH:MMZ` instant underneath. The hint shares
   `resolveEditorField` with Save, including the unchanged fall-back rule; a
   malformed field shows `UTC --`. Pinned by `editor_test`/`editor_scene_test`.
+- Edit path measured (2026-11-04): `gui/tools/edit_bench.cc` times the shipping
+  units over a 216 KiB DB — Release save 281 µs (new) / 258 µs (CAS), reload
+  132 µs, scene 28 µs; the atlas is not re-baked on save (0 cells) and a new
+  codepoint costs 12 cells + one frame. Encrypted open is ~31 ms, the KDF floor
+  for the Milestone 3 unlock. Numbers and limits in `GUI_PERFORMANCE.md` §2.2.
 - `F12` captures the live window natively in Debug and Release, including the
   modal; the headless fixture tool is unchanged.
 - `opencode.jsonc` restored; the repo skill and MCP server load from the
@@ -117,12 +123,11 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
 
 ---
 
-## 4. Milestone 1 — Phase 4b: edit in the weekly view (functionally done 2026-11-04)
+## 4. Milestone 1 — Phase 4b: edit in the weekly view (done 2026-11-04)
 
-The editor, write path, revision CAS, `F12` screenshot and UTC time display are
-shipped. What remains is the performance measurement and three optional
-refinements; the milestone's functional gate is met, but do not mark the section
-complete until the edit path is measured.
+The editor, write path, revision CAS, `F12` screenshot, UTC time display and the
+edit-path measurement are shipped. The three remaining items in §4.2/§4.3/§4.5
+are optional refinements, recorded as non-blocking; the milestone's gate is met.
 
 ### 4.1 Core safety — done
 
@@ -177,12 +182,17 @@ complete until the edit path is measured.
 - [x] Save → reload the week → arm one frame. The editor closes on success.
 - [x] External change while the editor is open: `dataVersion` reload shows a
       warning; the save carries the original revision and is refused if stale.
-- [ ] **Measure the edit path** — save time (insert and CAS update over a
-      throwaway DB), frames from the keypress/closing of the modal to the
-      redrawn week, and whether text is re-baked. Record before/after in
-      `GUI_PERFORMANCE.md`. Prefer a timed test or a headless driver; **do not
-      launch a window or steal focus for this**. The screenshot path does not
-      affect the idle repaint policy.
+- [x] **Measure the edit path** — done 2026-11-04 with
+      `gui/tools/edit_bench.cc` (not a CTest suite: wall-clock thresholds are
+      flaky). Release, 216 KiB DB, 120-row week, `--iterations 500`: insert +
+      reload **281 µs**, CAS update + reload **258 µs**, reload alone 132 µs,
+      scene 28 µs, text re-collect 15 µs, atlas `ensureGlyphs` same set 5 µs
+      (0 cells). A save re-bakes nothing; a new codepoint adds 12 cells (one per
+      size) and one extra frame. Enter → redrawn week is **1 frame** (2 with a
+      new glyph). Encrypted open is ~31 ms — the KDF, recorded for Milestone 3.
+      The compositor gap is logged once per save by the window
+      (`edit: save … ms, redrawn week … ms`); one live save confirms it.
+      Recorded in `GUI_PERFORMANCE.md` §2.2.
 - [x] **In-app screenshot** — `F12` renders with present disabled, reads the
       frame back, writes PNG to `--screenshot-dir`/the app's data directory,
       then re-enables present. Works in Debug and Release, modal included.
@@ -197,8 +207,8 @@ complete until the edit path is measured.
 
 **Done when:** create/edit/delete survive restart; the CLI and MCP see the
 changes; a stale save is rejected; `ctest` and the demo stay green; captures are
-updated; the edit path is measured. Functional work is done; the measurement is
-the only open gate.
+updated; the edit path is measured. **All met on 2026-11-04**; the three
+optional refinements in §4.2/§4.3/§4.5 stay open by choice.
 
 ---
 
@@ -485,8 +495,9 @@ Source: R4; open question 6.
 
 ## 17. Start here (new session)
 
-Last commits: `8731a06` editor UTC hint · `b947d08` 4b editor + `F12`.
-Everything in the baseline is green; no known runtime regression.
+Last commits: `8731a06` editor UTC hint · `b947d08` 4b editor + `F12` · plus
+the edit-path measurement (`gui/tools/edit_bench.cc`, `GUI_PERFORMANCE.md`
+§2.2). Everything in the baseline is green; no known runtime regression.
 
 Verification, headless only:
 
@@ -494,16 +505,17 @@ Verification, headless only:
 ninja -C build
 ctest --test-dir build --output-on-failure
 cd build/gui && ./klend_ario_capture --out /tmp/klend-shots
+cd build/gui && ./klend_ario_edit_bench --iterations 200
 python3 demo/klend_ario_demo.py --no-color
 ```
 
 Work order:
 
-1. **Measure the edit path** (Milestone 1's only open gate): save time, frames
-   to the redrawn week, text re-bake. Record it in `GUI_PERFORMANCE.md`; use a
-   timed test or a headless driver, never a focused window.
+1. ~~**Measure the edit path**~~ — done 2026-11-04; Milestone 1 is closed.
+   `klend_ario_edit_bench` prints the numbers any time they need re-checking.
 2. **Milestone 2** — PipeWire sound, daemon single-instance/autostart.
-3. **Milestone 3** — encrypted-by-default first run and key prompts.
+3. **Milestone 3** — encrypted-by-default first run and key prompts. The bench's
+   ~31 ms encrypted-open floor is the budget for the unlock dialog.
 4. **Milestone 4** — install rules, desktop entry, systemd unit.
 5. **Release 1.1** — the 10-hour sleep scheduler.
 

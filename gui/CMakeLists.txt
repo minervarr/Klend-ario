@@ -225,4 +225,24 @@ if(KLEND_BUILD_GUI)
         add_dependencies(klend_ario_capture compile_font_shaders compile_canvas_shaders)
         add_dependencies(klend_ario_capture klend_ario_gui_assets)
     endif()
+
+    # -----------------------------------------------------------------------
+    # klend_ario_edit_bench — the edit path, measured headlessly.
+    #
+    # NOT a CTest suite: a wall-clock threshold would be flaky, and the repo
+    # forbids one. It times the shipping units (saveEditorToDb, loadWeekModel,
+    # buildWeekScene, RasterFont::ensureGlyphs) and asserts only that Save still
+    # writes and reloads. Built in every configuration because the Release
+    # number is the one the user actually feels; it lives inside this block
+    # because the atlas half needs vk_canvas_core and the shipped font.
+    # -----------------------------------------------------------------------
+    add_executable(klend_ario_edit_bench tools/edit_bench.cc)
+    target_link_libraries(klend_ario_edit_bench PRIVATE
+        klend_ario_view
+        klend_ario_core
+        vk_canvas_core
+        app_shell)
+    target_compile_options(klend_ario_edit_bench PRIVATE -Wall)
+    add_dependencies(klend_ario_edit_bench generate_ui_min_text_size)
+    add_dependencies(klend_ario_edit_bench klend_ario_gui_assets)
 endif()

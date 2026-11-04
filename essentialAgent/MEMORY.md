@@ -400,6 +400,15 @@ These are truths this workspace already paid for. Do not relearn them.
   duration and is anchored to another event; drawing it would invent a meeting
   at the anchor's time. The scene skips those rows rather than the query,
   because `list`/`export` must still see them.
+- **A save is cheap and does not re-bake the atlas.** Measured 2026-11-04 with
+  `gui/tools/edit_bench.cc`: a Release insert + reload is ~0.3 ms on a 216 KiB
+  calendar, and `reload()` marks text dirty only to re-collect the codepoint set
+  (~15 µs) — `RasterFont::ensureGlyphs` adds 0 cells for a set the cache already
+  has. A genuinely new codepoint adds 12 cells (one per size) and one extra
+  frame; Enter → redrawn week is otherwise one frame, because the key is handled
+  before `drawFrame`. Encrypted open is ~31 ms on the same file while plaintext
+  is 0.08 ms: that is the ChaCha20 KDF, not the rows, so an unlock dialog's
+  floor is KDF time and plaintext open time is not the cost of encryption.
 - **Pixels are a build product.** Shaders are compiled next to the build tree and
   copied beside the executable with the fonts, because `FileAssetReader` looks
   there. A build tree that cannot run is a build tree whose UI is never seen —

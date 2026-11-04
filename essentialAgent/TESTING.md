@@ -93,6 +93,7 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | The weekly view's draw ops (colours, labels, borders, tail, now-line) | `gui/tests/scene_test.cc` | `src/scene.cc src/theme.cc src/week_layout.cc src/local_time.cc` + `core/src/event.cc` | none; fake `TextMetrics` |
 | DB → week model (one query, label, holidays) | `gui/tests/week_store_test.cc` | `src/week_store.cc` + core sources | in-memory DB, pinned `TZ` |
 | Headless view screenshots | `gui/tools/capture_main.cc` | the built binary | fixture weeks/editor; **not** CTest |
+| Edit-path timings (save, reload, scene, atlas) | `gui/tools/edit_bench.cc` | the built binary | throwaway temp DB + shipped font; **not** CTest |
 | In-app live screenshot (`F12`) | `gui/src/week_view.cc` | the built binary | live window; **manual**, Debug + Release |
 | MCP JSON parser/serializer | `mcp/tests/json_test.cc` | `mcp/src/json.cc` | none |
 | MCP JSON-RPC dispatch + five tools | `mcp/tests/server_test.cc` | `mcp/src/json.cc mcp/src/server.cc` + core | in-memory DB |
@@ -159,6 +160,17 @@ warning reaches the caller without being swallowed.
 and Release: the PNG opens, has the window's dimensions, shows the week, and
 shows the modal when one is open. The separate `klend_ario_capture` fixture tool
 remains the deterministic visual gate.
+
+### The edit path is timed, not asserted
+
+`gui/tools/edit_bench.cc` exists because ROADMAP §4.4 needed numbers and a
+wall-clock threshold in CTest would be flaky (this file forbids one). It asserts
+the *behaviour* — the row is written, the CAS token moves, reload sees the edit,
+a baked set adds no cells — and prints p50/p95 for `saveEditorToDb`,
+`loadWeekModel`, `buildWeekScene`, `collectTextInputs` and `ensureGlyphs`. It is
+never a release gate; the numbers live in `GUI_PERFORMANCE.md` §2.2. The one
+cost it cannot see, the gap to a presented frame, is logged by the window on
+every save and is a manual check.
 
 ### CLI time expressions
 

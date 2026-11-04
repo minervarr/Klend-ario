@@ -3,14 +3,16 @@
 // The weekly view as an application: window, database, input, redraw.
 //
 // It owns exactly the things the pure half cannot: a Host, a Renderer, the font,
-// a read-only database connection and a one-second poll. Every decision about
-// what a frame LOOKS like stays in scene.cc; this class only decides WHEN to
-// rebuild the scene and what a key or a click means.
+// a database connection and a one-second poll. Every decision about what a
+// frame LOOKS like stays in scene.cc; this class only decides WHEN to rebuild
+// the scene and what a key or a click means.
 //
-// Read-only on purpose for this slice (PLAN.md Phase 4a): the CLI and the MCP
-// server are the write paths, and a viewer that cannot corrupt the calendar is
-// the smallest honest first GUI. Editing is the next slice.
+// Writable since 4b: the edit modal goes through editor_store, which is the one
+// write bridge and keeps the revision compare-and-swap. `--read-only` restores
+// the 4a viewer contract (openReadOnly, no editor). The CLI and the MCP server
+// remain the other writers, seen live through Db::dataVersion().
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -67,7 +69,7 @@ public:
 private:
     bool openDatabase(const ViewOptions &options);
     bool loadFont();
-    void ensureText();
+    int ensureText(); // cells the bake added; 0 when the cache already had them
     bool reload();
     void drawFrame();
     void goToWeek(long long anchorUtc);
@@ -131,6 +133,15 @@ private:
     int pendingFrames_ = 1;
     bool running_ = true;
     int lastCursor_ = -1;
+
+    // A save's wall clock, logged once when the frame that shows its result is
+    // drawn. Headless tooling can time the write and the reload
+    // (gui/tools/edit_bench.cc), but not the gap to a presented frame — that
+    // needs this line in klend_ario.log. See GUI_PERFORMANCE.md §2.2.
+    bool editTimingPending_ = false;
+    std::chrono::steady_clock::time_point editTimingStart_{};
+    double editSaveMs_ = 0.0;
+    double editReloadMs_ = 0.0;
 };
 
 } // namespace klend_ario::gui

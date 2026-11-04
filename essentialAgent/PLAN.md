@@ -229,6 +229,15 @@ write paths, so the first GUI cannot corrupt a calendar.
         disabled, reads the frame back and writes a PNG to
         `--screenshot-dir`/the app's data directory; verified in Debug and
         Release, including the modal. The headless fixture tool is unchanged.
+  - [x] **Edit path measured (2026-11-04)** — `gui/tools/edit_bench.cc` times
+        the shipping units (not a CTest suite: a wall-clock threshold would be
+        flaky). Release over a 216 KiB throwaway DB, 120-row week: insert +
+        reload 281 µs, CAS update + reload 258 µs, reload 132 µs, scene 28 µs.
+        A save adds **0** atlas cells; a new codepoint adds 12 (one per size)
+        and one extra frame; Enter → redrawn week is 1 frame. Encrypted open is
+        ~31 ms (KDF, not rows). `WeekView::saveEditor` logs one line per save
+        (`edit: save … ms, redrawn week … ms`) because the present gap cannot be
+        measured headlessly. Numbers and caveats: `GUI_PERFORMANCE.md` §2.2.
 - [ ] **4c — overlay / print** — still post-MVP per `merged.md` §5.4–5.5.
 
 ---

@@ -8,8 +8,9 @@ for the rules. Loaded on demand, like `GUI.md` and `DEMO.md`.*
 
 **Status:** Phases A–C landed and measured on 2026-10-20 (§2, §6). A1–A3 are
 the repaint policy; A4 kept `Vsync` after a hidden-window check; B and C are in
-the two framework children with their pins advanced here. Do not record a win
-here or in `GUI.md` without the numbers.
+the two framework children with their pins advanced here. The 4b **edit path**
+was measured headlessly on 2026-11-04 (§2.2) — the last open gate in Milestone 1.
+Do not record a win here or in `GUI.md` without the numbers.
 
 ---
 
@@ -27,8 +28,8 @@ resources":
 The target is: **no work when nothing visible changed**, a windowed surface on
 compositors that honour one, and no chance of the UI silently running on a CPU
 Vulkan device. The product behaviour (1 s data polling) does not change. The
-measurements below were taken while the view was still read-only (pre-4b); the
-edit path landed later and must be measured separately.
+measurements in §2/§2.1 were taken while the view was still read-only; the edit
+path landed later and is measured separately in §2.2.
 
 ## 2. Baseline (measured 2026-10-20)
 
@@ -90,6 +91,71 @@ one second has passed since the last such line, so the count in that line is
 frames *since the previous line*, and a 1-frame/minute run logs once a minute.
 That is fine for "0 while browsing" (no line at all) but do not read it as a
 per-second rate.
+
+### 2.2 The edit path (measured 2026-11-04)
+
+The 4b gate was "measure the edit path: save time, frames to the redrawn week,
+and whether text is re-baked". A live window cannot be used for a check here
+(taking focus interrupts real work, ROADMAP §0), so the numbers come from
+`gui/tools/edit_bench.cc`: a dev tool that times the **shipping units** —
+`saveEditorToDb` (the only write bridge), `loadWeekModel` (the one query),
+`buildWeekScene` and `RasterFont::ensureGlyphs` — over a real file database.
+It is not a CTest suite: a wall-clock threshold would be flaky, which
+`TESTING.md` forbids. It asserts only that Save still writes, that the CAS token
+moves, and that reload sees the row.
+
+Machine: i7-11800H, Linux 7.2.14, Mesa/NVK idle (no GPU work in these paths),
+Debug `build/` and Release `build_release/`, `--iterations 500`. Fixture: 52
+weeks × 40 events plus a **120-event week**, 216 KiB plaintext and 216 KiB
+encrypted, 97 codepoints × 4 text sizes. Microseconds, p50 / p95.
+
+| Scenario | Debug | Release |
+|---|---|---|
+| Open plaintext (216 KiB) | 179 / 248 | 79 / 260 |
+| Open **encrypted** (same file) | 48,641 / 50,761 | **30,881 / 33,565** |
+| Reload: one query, 120 rows | 760 / 800 | 132 / 152 |
+| Insert + reload (Save, new event) | 970 / 1,102 | **281 / 348** |
+| CAS update + reload (Save, edit) | 952 / 1,076 | **258 / 310** |
+| Scene build, 1280×720, 120 rows | 201 / 217 | 28 / 39 |
+| Collect text inputs (dirty flag) | 217 / 246 | 15 / 16 |
+| Atlas bake, 1164 cells (worst of 3) | 1,470 / 10,686 | 1,520 / 5,197 |
+| Atlas `ensureGlyphs`, same set | 9.9 / 11.9 | 4.8 / 5.3 |
+
+What the numbers mean:
+
+- **A Release save is ~0.1 ms of SQL plus ~0.13 ms of reload**, so the edit path
+  is not a performance concern on this machine. Debug is ~3.5× slower because
+  sqlite3mc is built `-g`; quote Release when judging the product.
+- **The atlas is not re-baked on save.** `reload()` sets `textDirty_`, so the
+  next frame re-collects the codepoint/size set (15 µs Release) and calls
+  `ensureGlyphs`, which returns **0 added cells** for a set the cache already
+  has. `font_->reset()` runs only when the *size set* changes (resize), never on
+  a save. A title that introduces a codepoint the week never used (e.g. `ñ`)
+  adds **12 cells** (one per size) and costs one more frame through
+  `hasMisses()`; the bench pins both cases.
+- **Frames from Enter to the redrawn week: 1** — the pass that handles Enter
+  saves, closes the modal and reloads, and the same pass then draws the week
+  (the code handles the key *before* `drawFrame`). It is **2** when the edit
+  introduces a new glyph, because `hasMisses()` arms one more pass. The scene
+  rebuild that frame buys is 28 µs Release.
+- **Encrypted open is ~31 ms Release / ~49 ms Debug** on a *216 KiB* file, while
+  plaintext is 0.08 ms. That is the ChaCha20 KDF, not the rows: it does not grow
+  with the calendar, but it is the floor for a first-run/unlock dialog
+  (Milestone 3, D3). Do not quote plaintext open time as the encryption cost.
+- **Not measured here:** the compositor/present gap. `WeekView::saveEditor`
+  now logs one line per save —
+  `edit: save X ms, reload Y ms, redrawn week Z ms, +N atlas cells` — where `Z`
+  is measured to the submitted frame. It needs one real save in a live Debug or
+  Release session; that is a manual check the user runs, not an automated gate.
+  The line never arms a frame, so it cannot change the repaint policy.
+
+Reproduce:
+
+```bash
+ninja -C build klend_ario_edit_bench
+cd build/gui && ./klend_ario_edit_bench --iterations 500          # throwaway DB
+cd build_release/gui && ./klend_ario_edit_bench --iterations 500   # the real number
+```
 
 ## 3. What is actually expensive
 

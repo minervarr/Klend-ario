@@ -32,6 +32,7 @@ one sitting.
 | `src/week_view.{hh,cc}` | `AppView`: window, `RasterFont`, writable DB, editor input, 1 s poll, F12 capture |
 | `src/gui_main.cc` | `app_shell_main`: `--db`, `--key-file`, `--hidden`, `--read-only`, `--screenshot-dir` |
 | `tools/capture_main.cc` | headless fixture PNG scenarios (dev tooling) |
+| `tools/edit_bench.cc` | edit-path timings: save, reload, scene, atlas (dev tooling) |
 
 ## Build
 
@@ -112,6 +113,24 @@ are clamped to the font's generated `kMinReadableTextSizePx` (16 px for
 `ui.otf`), and the text clip gets a 0.30 em descent allowance so `p/g/y` are not
 cut. The full rationale, traps and capture checks are in
 [`../essentialAgent/GUI.md`](../essentialAgent/GUI.md).
+
+## Measuring the edit path
+
+`klend_ario_edit_bench` times what a Save actually does — no window, no
+compositor, a throwaway database:
+
+```bash
+cd build/gui && ./klend_ario_edit_bench --iterations 500
+cd build_release/gui && ./klend_ario_edit_bench --iterations 500   # the number to quote
+```
+
+It prints p50/p95 for open (plaintext and encrypted), `loadWeekModel`,
+`saveEditorToDb` (insert and CAS update, each followed by the reload),
+`buildWeekScene`, `collectTextInputs` and `RasterFont::ensureGlyphs`. It asserts
+that the write landed and the revision moved, never a duration — a wall-clock
+threshold in CTest would be flaky. The numbers and their caveats live in
+[`../essentialAgent/GUI_PERFORMANCE.md`](../essentialAgent/GUI_PERFORMANCE.md)
+§2.2. `--keep` preserves the temp database, `--dir` puts it somewhere specific.
 
 ## Rules worth keeping
 
