@@ -7,6 +7,8 @@ Written natively in **C++17**, **desktop-first on Linux**; Android is deferred.
 The product design is [`merged.md`](merged.md) (*"Openseek — Final Plan (v3)"*).
 The how-we-build-it manual — what, why, rules, plan, testing — lives in
 [`essentialAgent/`](essentialAgent/README.md). **Read that first.**
+The forward-looking release ladder is [`ROADMAP.md`](ROADMAP.md); the detailed
+phase tracker is [`essentialAgent/PLAN.md`](essentialAgent/PLAN.md).
 
 ## Scope and captured requirements
 
@@ -207,7 +209,7 @@ core/    all logic — portable, no OS headers, no frontend
 cli/     the MVP frontend; links core
 mcp/     the local MCP server (JSON-RPC over stdio); links core
 alarm/   the alarm engine (libnotify, or a log); links core
-gui/     the weekly view — pure geometry now, vk_canvas renderer later (Phase 4)
+gui/     the weekly view — read-only Phase 4a; vk_canvas + app_shell (editing is 4b)
 android/ later (Phase 7)
 libs/    firstparty (archive_engine, pe-holiday-calc) + vendored thirdparty (sqlite3mc)
 scripts/ the zipapp build tool

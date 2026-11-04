@@ -17,6 +17,38 @@ std::tm localTm(long long utcSeconds) {
     return out;
 }
 
+std::tm civilTm(int year, int month, int day, int hour, int minute, int second) {
+    std::tm t{};
+    t.tm_year = year - 1900;
+    t.tm_mon = month - 1;
+    t.tm_mday = day;
+    t.tm_hour = hour;
+    t.tm_min = minute;
+    t.tm_sec = second;
+    t.tm_isdst = -1;
+    return t;
+}
+
+bool sameCivil(const std::tm &tm, int year, int month, int day, int hour, int minute,
+               int second) {
+    return tm.tm_year == year - 1900 && tm.tm_mon == month - 1 && tm.tm_mday == day &&
+           tm.tm_hour == hour && tm.tm_min == minute && tm.tm_sec == second;
+}
+
+// mktime WITH a forced DST opinion. The request is only meaningful if the
+// resulting instant round-trips back to the same wall clock; that is how a
+// nonexistent or repeated local time is detected instead of silently accepted.
+bool candidateUtc(const std::tm &base, int isdst, long long &out) {
+    std::tm t = base;
+    t.tm_isdst = isdst;
+    const std::time_t result = std::mktime(&t);
+    if (result == static_cast<std::time_t>(-1)) {
+        return false;
+    }
+    out = static_cast<long long>(result);
+    return true;
+}
+
 // Local 00:00 for a civil date, as a UTC instant. mktime normalises overflow
 // (day 32 -> the 1st of the next month), which is what lets the week walk
 // backwards past a month boundary without any date arithmetic of our own.
@@ -62,6 +94,44 @@ LocalWeek localWeekContaining(long long utcSeconds) {
         week.days[static_cast<size_t>(i)] = localDayContaining(midnight);
     }
     return week;
+}
+
+LocalResolution localTimeToUtc(int year, int month, int day, int hour, int minute,
+                               int second) {
+    const std::tm base = civilTm(year, month, day, hour, minute, second);
+
+    long long standard = 0;
+    long long daylight = 0;
+    const bool hasStandard = candidateUtc(base, 0, standard);
+    const bool hasDaylight = candidateUtc(base, 1, daylight);
+    const bool standardMatches =
+        hasStandard && sameCivil(localTm(standard), year, month, day, hour, minute, second);
+    const bool daylightMatches =
+        hasDaylight && sameCivil(localTm(daylight), year, month, day, hour, minute, second);
+
+    LocalResolution out;
+    if (!standardMatches && !daylightMatches) {
+        // Spring forward: this wall clock was skipped. mktime with isdst=-1
+        // normalises it (02:30 -> 03:30); return that instant so the UI can
+        // preview the shift, but mark it so saving is refused without consent.
+        std::tm normalized = base;
+        normalized.tm_isdst = -1;
+        const std::time_t fallback = std::mktime(&normalized);
+        out.utc = static_cast<long long>(fallback);
+        out.nonexistent = true;
+        return out;
+    }
+
+    if (standardMatches && daylightMatches) {
+        // Fall back: the same wall clock happens twice. Choose the earlier
+        // (the DST side) and say so; an editor that cares can offer the other.
+        out.ambiguous = standard != daylight;
+        out.utc = standard < daylight ? standard : daylight;
+        return out;
+    }
+
+    out.utc = standardMatches ? standard : daylight;
+    return out;
 }
 
 std::string formatClockLocal(long long utcSeconds) {

@@ -25,6 +25,10 @@ code in **Klend-ario**. None of it ships to a user. It is the operating manual.
 they are linked from `AGENTS.md` and loaded on demand rather than in every
 session.
 
+The forward-looking finish line is [`../ROADMAP.md`](../ROADMAP.md). `PLAN.md`
+remains the detailed phase tracker and status log; close a milestone in both in
+the same change.
+
 Product background (not agent rules) is the repo's [`../merged.md`](../merged.md):
 *"Openseek — Final Plan (v3)"*, the calendar design this repository implements.
 

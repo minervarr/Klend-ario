@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS events (
     notes        TEXT,
     created_utc  INTEGER NOT NULL,
     updated_utc  INTEGER NOT NULL,
+    -- Compare-and-swap token for concurrent writers. updated_utc has whole
+    -- seconds, so two edits in the same second would otherwise look identical;
+    -- this counter changes on every update and never goes backwards.
+    revision     INTEGER NOT NULL DEFAULT 1,
     CHECK (end_utc >= start_utc)
 );
 

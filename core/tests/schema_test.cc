@@ -9,6 +9,7 @@
 #include "klend_ario/db.hh"
 #include "klend_ario/event.hh"
 #include "klend_ario/schema.hh"
+#include "sqlite3mc_amalgamation.h" // raw v1 fixture for the migration test
 
 using namespace klend_ario;
 
@@ -122,11 +123,65 @@ void testUpdateEvent() {
     assert(after.value().notes == "moved");
     // An edit does not create: created_utc is untouched.
     assert(after.value().createdUtc == before.value().createdUtc);
+    // The compare-and-swap token moved; updated_utc alone has whole seconds
+    // and cannot tell two edits in the same second apart.
+    assert(after.value().revision == before.value().revision + 1);
+
+    // The SAME stale draft must not overwrite the committed edit. This is the
+    // GUI/CLI/MCP race: read, another writer commits, then this save arrives.
+    Event stale = edit;
+    stale.title = "stale";
+    assert(!db.value().updateEvent(stale).ok());
+    auto unchanged = db.value().getEvent(id.value());
+    assert(unchanged.ok());
+    assert(unchanged.value().title == "final");
+
+    // A caller that constructs an Event without reading it has revision 0 and
+    // no right to overwrite the row.
+    Event blind;
+    blind.id = id.value();
+    blind.title = "blind";
+    blind.startUtc = 100;
+    blind.endUtc = 200;
+    assert(!db.value().updateEvent(blind).ok());
 
     // Updating an id that is not there is reported, not a silent no-op.
     Event ghost = edit;
     ghost.id = 999999;
     assert(!db.value().updateEvent(ghost).ok());
+}
+
+void testRevisionMigrationFromV1() {
+    // A v1 file has the events table without `revision`. Simulate one by
+    // opening normally (v2), dropping the column, and putting the version
+    // marker back; reopening must add the column exactly once and keep the row.
+    const char *path = "klend_migrate_v1_test.db";
+    std::remove(path);
+    {
+        auto db = Db::open(path);
+        assert(db.ok());
+        auto id = db.value().insertEvent(makeEvent("kept", 100, 200));
+        assert(id.ok());
+        assert(db.value().setMeta("schema_version", "1").ok());
+    }
+
+    sqlite3 *raw = nullptr;
+    assert(sqlite3_open(path, &raw) == SQLITE_OK);
+    assert(sqlite3_exec(raw, "ALTER TABLE events DROP COLUMN revision", nullptr, nullptr,
+                        nullptr) == SQLITE_OK);
+    sqlite3_close(raw);
+
+    {
+        auto db = Db::open(path);
+        assert(db.ok());
+        assert(db.value().getMeta("schema_version").value() == std::to_string(kSchemaVersion));
+        auto stored = db.value().listEvents(0, 1000);
+        assert(stored.ok());
+        assert(stored.value().size() == 1);
+        assert(stored.value()[0].title == "kept");
+        assert(stored.value()[0].revision == 1); // DEFAULT 1 on the ALTER
+    }
+    std::remove(path);
 }
 
 void testRangeBoundaryIsHalfOpen() {
@@ -329,6 +384,7 @@ int main() {
     testRemove();
     testMissingEventIsError();
     testUpdateEvent();
+    testRevisionMigrationFromV1();
     testRangeBoundaryIsHalfOpen();
     testMeta();
     testSchemaVersionIsRecorded();

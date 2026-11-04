@@ -65,7 +65,7 @@ struct Op {
 
 struct HitTarget {
     Rect rect;
-    std::string id; // "prev" | "today" | "next"
+    std::string id; // "prev" | "today" | "next" | "event:<id>"
 };
 
 struct Scene {
@@ -77,8 +77,11 @@ struct Scene {
 // the clock, so the now-line and "today" are assertable. `minTextPx` is the
 // font's generated legibility floor; the window passes it, the pure tests keep
 // the historical 0 (fraction-only) sizes.
+// `selectedEventId` is UI state, not week data: the scene paints its box with
+// the selection colour so the editor's target is visible, while the same
+// WeekModel still answers "what is in this week".
 Scene buildWeekScene(int width, int height, const WeekModel &week, long long nowUtc,
                      const TextMetrics &text, const Theme &theme = defaultTheme(),
-                     int minTextPx = 0);
+                     int minTextPx = 0, long long selectedEventId = 0);
 
 } // namespace klend_ario::gui

@@ -17,6 +17,7 @@ Klend-ario/
 │   ├── GUI_PERFORMANCE.md        # limited-resources plan: repaint, device, window
 │   └── REQUIREMENTS.md           # captured 2026-10-16 notes (source + normalized)
 ├── merged.md                     # the product plan ("Openseek")
+├── ROADMAP.md                    # the forward-looking release ladder
 ├── manifest.json                 # name/version/platforms/build
 ├── CMakeLists.txt                # CMake + Ninja only
 ├── cmake/                        # build helpers (e.g. TestHelpers.cmake)
@@ -196,6 +197,10 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
   a merge never silently becomes a restore.
 - **A partial edit changes only supplied flags.** Carry a `*Given` flag in
   `Args` for every editable field; a default value cannot mean "leave alone".
+- **A write is compare-and-swap.** `Event.revision` is read with the row and
+  `Db::updateEvent` refuses a stale value; never add an unconditional update
+  path for a frontend. `updated_utc` is a clock reading, not a concurrency
+  token — two edits in the same second look identical.
 - **The weekly view is a pure scene plus a dumb adapter.** Geometry in
   `week_layout`, every visual decision in `scene` (asserted by `scene_test` with
   an injected `TextMetrics`), and `scene_render` maps ops to `Canvas` calls.

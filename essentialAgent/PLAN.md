@@ -23,6 +23,8 @@ as work lands; this file is the tracker.*
 | — | Storage benchmark — SQLite vs JSON gate | **open** — before any storage change |
 
 **MVP = 0–2.** Detail for phases 3–7 is in [`../merged.md`](../merged.md).
+The forward-looking release ladder is [`../ROADMAP.md`](../ROADMAP.md); this file
+remains the detailed phase tracker and status log.
 
 **Desktop-first.** Phase 7 is deferred, not cancelled. No Android/JNI/NDK work
 until the desktop product is complete and that phase is explicitly reopened.
@@ -201,7 +203,23 @@ write paths, so the first GUI cannot corrupt a calendar.
       0 frames while browsing, 1/minute on the current week, 0.00 % CPU.
       Landed before 4b because editing will add more redraw paths.
 - [ ] **4b — editing** — create/edit/delete from the GUI with CLI-parity fields
-      (`*Given` semantics), then alarms hooked into the window.
+      (`*Given` semantics). The daemon stays the only alarm owner; the window
+      may show upcoming alarms.
+  - [x] **Concurrent-write safety (2026-11-04)** — `events.revision` is a
+        compare-and-swap token, `Db::updateEvent` refuses a stale save and
+        commits the row plus `meta.modified_utc` in one transaction. Schema
+        v2; the v1→v2 migration adds `revision DEFAULT 1`. `schema_test` covers
+        the stale save, the blind write, and a real v1 file migrating.
+  - [x] **Local time inverse (2026-11-04)** — `localTimeToUtc` resolves a
+        wall clock to an instant and flags DST ambiguity/nonexistence;
+        `local_time_test` pins Lima, Berlin spring/fall and UTC.
+  - [x] **Selection foundation (2026-11-04)** — the scene emits
+        `event:<id>` hit targets and paints the selected box; the window
+        selects on click and clears with Escape/empty click. No editor yet.
+  - [ ] **Editor** — modal form, CLI-parity fields, text field/textarea,
+        local+UTC time entry, save/delete, error surface, write path.
+  - [ ] **Editor tests** — pure draft semantics, scene overlay, in-memory DB
+        round-trip, stale-save UX.
 - [ ] **4c — overlay / print** — still post-MVP per `merged.md` §5.4–5.5.
 
 ---
@@ -299,6 +317,16 @@ ctest --test-dir build --output-on-failure      # all pass
 ## Status log
 
 Newest first. One line per meaningful change.
+
+- **4b foundation + roadmap (2026-11-04).** Restored `opencode.jsonc` (the repo
+  skill and MCP registration load again), fixed the stale tracker claims, and
+  added `ROADMAP.md` as the forward-looking release ladder. Core gained
+  `events.revision`, a compare-and-swap `Db::updateEvent`, and the first real
+  migration (v1→v2, additive `revision DEFAULT 1`). The GUI gained the local
+  wall-clock inverse with DST flags, `event:<id>` scene hit targets and a
+  selection highlight; the window selects on click and clears with
+  Escape/empty click. No editor or write path yet. 34/34 suites pass; the demo
+  still exits `0`. Decisions recorded in `MEMORY.md` §4/§7/§9.
 
 - **GUI performance pass — demand-driven repaint (2026-10-20).** The weekly
   view no longer repaints once a second. `gui/src/refresh.*` is a pure

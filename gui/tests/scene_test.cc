@@ -125,9 +125,18 @@ static const Op *findStroke(const Scene &scene, const Rect &rect) {
     return nullptr;
 }
 
+static const HitTarget *findHit(const Scene &scene, std::string_view id) {
+    for (const HitTarget &hit : scene.hits) {
+        if (hit.id == id) {
+            return &hit;
+        }
+    }
+    return nullptr;
+}
+
 // ---------------------------------------------------------------------------
 
-static Scene populatedScene() {
+static Scene populatedScene(long long selectedEventId = 0) {
     WeekModel week = makeWeek();
     week.events.push_back(makeEvent("Deep work", at(0, 10), at(0, 12), 0, 0));
     week.events.push_back(makeEvent("Ship it", at(1, 10), at(1, 12), 100, 100));
@@ -141,8 +150,15 @@ static Scene populatedScene() {
     week.events.back().hidden = true; // hidden is a view flag; the scene draws what it gets
     week.events.push_back(makeEvent("Reminder", at(4, 8), at(4, 8), 50, 50, EventType::Alarm));
 
+    // Stable ids make the hit targets assertable without relying on the query
+    // order; the scene's target is "event:<id>", not an index.
+    for (size_t i = 0; i < week.events.size(); ++i) {
+        week.events[i].id = static_cast<long long>(i) + 1;
+    }
+
     const FakeMetrics measure;
-    return buildWeekScene(kWidth, kHeight, week, at(6, 12), measure);
+    return buildWeekScene(kWidth, kHeight, week, at(6, 12), measure, defaultTheme(), 0,
+                          selectedEventId);
 }
 
 static void testHeaderAndChrome() {
@@ -166,13 +182,15 @@ static void testHeaderAndChrome() {
     assert(findText(scene, "SA 17")->color.r == defaultTheme().nowLine.r);
     assert(findText(scene, "SU 11")->color.r == defaultTheme().dimText.r);
 
-    // Three navigation targets, right-aligned inside the content margin.
-    assert(scene.hits.size() == 3);
-    assert(scene.hits[0].id == "prev" && scene.hits[1].id == "today" &&
-           scene.hits[2].id == "next");
-    assert(scene.hits[2].rect.right() == kWidth - m.headerPad);
-    assert(scene.hits[0].rect.right() < scene.hits[1].rect.x);
-    assert(scene.hits[1].rect.right() < scene.hits[2].rect.x);
+    // Three navigation targets, right-aligned inside the content margin. Event
+    // boxes add their own targets, so find by id rather than by position.
+    const HitTarget *prev = findHit(scene, "prev");
+    const HitTarget *today = findHit(scene, "today");
+    const HitTarget *next = findHit(scene, "next");
+    assert(prev != nullptr && today != nullptr && next != nullptr);
+    assert(next->rect.right() == kWidth - m.headerPad);
+    assert(prev->rect.right() < today->rect.x);
+    assert(today->rect.right() < next->rect.x);
 }
 
 static void testEventBoxAndLabels() {
@@ -202,6 +220,41 @@ static void testEventBoxAndLabels() {
     // Importance 100 is red.
     const Event ship = makeEvent("", at(1, 10), at(1, 12), 100, 100);
     assert(hasFill(scene, Rect{100, 245, 100, 36}, rgbForStyle(styleFor(ship))));
+}
+
+static void testEventHitTargetsAndSelection() {
+    const Scene scene = populatedScene();
+
+    // Every drawn block is a target; the Alarm row is not a block.
+    const HitTarget *deep = findHit(scene, "event:1");
+    assert(deep != nullptr);
+    assert(deep->rect.x == 0 && deep->rect.y == 245 && deep->rect.w == 100 &&
+           deep->rect.h == 36);
+    assert(findHit(scene, "event:8") == nullptr);
+
+    int eventHits = 0;
+    for (const HitTarget &hit : scene.hits) {
+        if (hit.id.rfind("event:", 0) == 0) {
+            ++eventHits;
+        }
+    }
+    assert(eventHits == 7); // eight rows, one of them an Alarm
+
+    // Selection is a scene decision: the same WeekModel paints a highlight on
+    // the chosen event without changing the hit geometry.
+    const Scene selected = populatedScene(1);
+    const HitTarget *stillThere = findHit(selected, "event:1");
+    assert(stillThere != nullptr && stillThere->rect.x == deep->rect.x &&
+           stillThere->rect.y == deep->rect.y);
+    bool highlighted = false;
+    for (const Op &op : selected.ops) {
+        if (op.kind == OpKind::Stroke && op.rect.x == deep->rect.x &&
+            op.rect.y == deep->rect.y && op.color.r == defaultTheme().selection.r &&
+            op.color.g == defaultTheme().selection.g && op.color.b == defaultTheme().selection.b) {
+            highlighted = true;
+        }
+    }
+    assert(highlighted);
 }
 
 static void testOverlapSplitsTheColumn() {
@@ -376,6 +429,7 @@ int main() {
 
     testHeaderAndChrome();
     testEventBoxAndLabels();
+    testEventHitTargetsAndSelection();
     testOverlapSplitsTheColumn();
     testShortEventKeepsItsPositionAndLosesItsText();
     testAlarmIsNotABlock();

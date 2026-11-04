@@ -36,6 +36,7 @@ struct Theme {
     Color todayColumn{26, 26, 34, 255};
     Color tailHatch{52, 52, 62, 140}; // translucent: a hint, not a wall of stripes
     Color nowLine{230, 80, 80, 255};
+    Color selection{120, 170, 255, 255}; // the event being edited, not "now"
     Color holidayAccent{240, 180, 90, 255};
     Color buttonFill{42, 42, 54, 255};
     Color emptyHint{128, 128, 140, 255};

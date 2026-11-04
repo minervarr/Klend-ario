@@ -49,8 +49,8 @@ Phase 0 — scaffold      CMake+Ninja, archive_engine submodule, pyz build tool,
 Phase 1 — core          SQLite schema + storage layer + model, with tests
 Phase 2 — CLI MVP       add / list / show / rm  (the "app" until the GUI exists)
 Phase 3 — encryption    SQLite3MultipleCiphers + Syncthing sync policy
-CLI power — stages 1-6  output/edit/time/query/intelligence/portability ← you are here
-Phase 4 — GUI           weekly 16:9 view (vk_canvas + app_shell)   ← PAUSED
+CLI power — stages 1-6  output/edit/time/query/intelligence/portability (frozen 2026-10-17)
+Phase 4 — GUI           weekly 16:9 view (vk_canvas + app_shell)   ← 4a done; 4b next
 Phase 5 — MCP           local read/write server, minimal tool surface
 Phase 6 — alarms        libnotify + PipeWire / Android native
 Phase 7 — Android       platform layer, storage permissions   ← DEFERRED
@@ -110,7 +110,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | CLI import | Parse the whole file first, then write in one transaction. Append by default with fresh ids; `--replace` and `--preserve-ids` are explicit. Empty input is an error; `--dry-run` never opens the database |
 | CLI completion | `completion bash|zsh|fish` prints a generated script. One per-verb table feeds all three shells, so suggestions cannot drift into invalid flags. The CLI is one binary, so completion must work from a fresh checkout without an install step |
 | CLI database access | `doctor` and `export` use `Db::openReadOnly`/`openEncryptedReadOnly`: no create, no migrate, no writes. Explicit `--db` on a read-only view must exist; the default path may be created for first use |
-| CLI status | Feature-complete and frozen 2026-10-17. New work is maintenance only; GUI Phase 4 is next |
+| CLI status | Feature-complete and frozen 2026-10-17. New work is maintenance only; GUI Phase 4a is done and 4b (editing) is next |
 | Build tool | stdlib-only Python **zipapp** (`scripts/`), **Linux only for now** |
 | Demo | Permanent `demo/klend_ario_demo.py`: stdlib-only Python consumer of the built binaries; every run uses a throwaway temp `--db`, never the real `state` DB, and never links `core/`. See `DEMO.md` |
 | Build system | **CMake + Ninja only** |
@@ -134,6 +134,35 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Encryption priority | Implemented (Phase 3) and kept; **not a gate** for new work. Removing it is a separate security decision |
 | Notes | Planned post-MVP companion; a note references an event by id, never copies it |
 | G-SHOCK | Research spike; feasibility depends on the watch model/BLE protocol; no promise yet |
+
+### Phase 4b decisions (recorded 2026-11-04)
+
+- **Editing is modal, not inline.** A selected event opens an overlay with the
+  CLI-parity fields; the week behind it stays a pure scene. `TextFieldState` /
+  `textarea` and the host clipboard are reused — no second text engine.
+- **Local wall-clock input is resolved, not parsed.** `localTimeToUtc` returns
+  the instant plus an `ambiguous`/`nonexistent` flag. A spring-forward time is
+  refused; a fall-back time chooses the earlier occurrence and says so. The
+  editor always shows UTC alongside the local value.
+- **Saves are compare-and-swap.** `Event.revision` is the token read with the
+  row; `Db::updateEvent` refuses a stale one. A second-resolution
+  `updated_utc` alone cannot tell two edits in the same second apart.
+- **4b does not include drag/resize, recurrence, or multi-select.** They are
+  later work; the first editor is a form, not a direct-manipulation canvas.
+- **The daemon is the only alarm owner.** The GUI may show upcoming alarms but
+  does not deliver them; a single instance/lock prevents double triggers.
+
+### Release decisions recorded, implementation pending
+
+- **Encryption by default.** A new calendar is encrypted; an explicit opt-out
+  creates a plaintext file. Existing plaintext files remain readable. Key
+  precedence is explicit flag > environment > prompt > error. See §7.
+- **User-local install.** Default prefix `~/.local`, no root; a tarball plus a
+  systemd user unit and an XDG autostart fallback. A `LICENSE` is decided
+  before binaries leave this machine.
+- **Time display is system-local plus UTC.** The GUI shows both; a launch-time
+  `--timezone` (applied before threads start) supports another zone. The CLI
+  stays UTC-only. See §4 and `REQUIREMENTS.md` Q7.
 
 Product decisions (from `merged.md`, §1) that bind the code: events are
 **individual rows**; importance → hue (violet 0 → red 100); urgency → border
@@ -282,6 +311,13 @@ These are truths this workspace already paid for. Do not relearn them.
   upward only, in order. A database written by a *newer* build is **refused**
   rather than opened and quietly misread — forward compatibility is not ours to
   guess, and a silently wrong calendar is worse than a startup error.
+- **A second-resolution timestamp is not a concurrency token.** `updated_utc`
+  tells you *when* a row changed, not *which* change you read. Two writers in
+  the same second look identical. `events.revision` is the compare-and-swap
+  token: `Db::updateEvent` updates only `WHERE revision = <the value read>` and
+  increments it; a stale GUI save is refused instead of overwriting an MCP or
+  CLI edit. The v1→v2 migration adds the column with `DEFAULT 1`, and the
+  update plus `meta.modified_utc` commit in one transaction.
 - **A calendar stores instants, not wall-clock readings.** `events.start_utc`/
   `end_utc` are Unix seconds UTC, and the ISO-8601 parser/formatter is strict and
   UTC-only (`Z`) on purpose: a silently reinterpreted date is worse than a
@@ -394,6 +430,12 @@ enough to keep, because both were decided against an obvious alternative.
 - **Where the secret comes from is the frontend's job.** Core takes a
   `std::string`; the CLI reads `--key-file <path>` (first line) or
   `$KLEND_ARIO_KEY`, and does nothing about prompts yet.
+- **New calendars are encrypted by default (decided, not yet implemented).**
+  An explicit opt-out is required to create plaintext; existing plaintext files
+  stay readable. Key precedence is explicit flag > environment > prompt > error.
+  A TTY prompt never echoes the passphrase, and a passphrase is never accepted
+  on argv. The GUI gets an unlock/first-run dialog, the daemon a 0600 key file
+  or systemd credential, and MCP remains env/file-only.
 
 ### Sync
 
@@ -495,6 +537,9 @@ enough to keep, because both were decided against an obvious alternative.
   hard way: the first backend no-op'd silently.
 - **PipeWire sound is NOT implemented yet.** Notifications fire; the audible
   half of `merged.md` §6 is an open gap, named rather than faked.
+- **One owner.** `klend_ario_alarmd` is the only process that delivers alarms.
+  The GUI may show upcoming alarms but does not fire its own; a single
+  instance/lock will make that a mechanical guarantee rather than a convention.
 
 ## 10. Captured requirements (2026-10-16)
 

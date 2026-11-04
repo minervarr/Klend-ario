@@ -95,7 +95,8 @@ std::string fitText(std::string_view text, int size, int maxWidth, const TextMet
 } // namespace
 
 Scene buildWeekScene(int width, int height, const WeekModel &week, long long nowUtc,
-                     const TextMetrics &text, const Theme &theme, int minTextPx) {
+                     const TextMetrics &text, const Theme &theme, int minTextPx,
+                     long long selectedEventId) {
     Scene scene;
     const Frame frame = frameFor(width, height);
     const Rect &content = frame.content;
@@ -254,6 +255,11 @@ Scene buildWeekScene(int width, int height, const WeekModel &week, long long now
             rect.w = std::max(rect.w, 2);
             rect.h = std::max(rect.h, 1);
 
+            // The box is the click target. The id, not the index, is what the
+            // editor needs: the week is reloaded from the database and order
+            // is not guaranteed to survive that.
+            scene.hits.push_back(HitTarget{rect, "event:" + std::to_string(event.id)});
+
             const Rgb fillRgb = rgbForStyle(styleFor(event));
             const Color fill = toColor(fillRgb, 240);
             scene.ops.push_back(fillOp(rect, fill, 2));
@@ -264,6 +270,9 @@ Scene buildWeekScene(int width, int height, const WeekModel &week, long long now
                                  styleFor(event).borderFactor * (m.maxBorderPx - 1)));
             border = std::clamp(border, 1, std::max(1, rect.h / 3));
             scene.ops.push_back(strokeOp(rect, toColor(shade(fillRgb, 0.55)), border, 2));
+            if (selectedEventId != 0 && event.id == selectedEventId) {
+                scene.ops.push_back(strokeOp(rect, theme.selection, 2, 2));
+            }
 
             // Labels by height tier: time, then title, then nothing. A five
             // minute event keeps its (thin, coloured) box and shows no text

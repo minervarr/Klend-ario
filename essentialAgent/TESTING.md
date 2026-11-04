@@ -71,7 +71,7 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Pure model / parsing (`event`, ISO 8601, priority→colour) | `core/tests/` | the one source file, nothing else | none |
 | UTC / day arithmetic (`parseIso8601`, `formatIso8601`, half-open day) | `core/tests/event_test.cc` | `src/event.cc` | none |
 | User-facing instants/durations (`today`, `week+7d`, `90m`) | `core/tests/timeexpr_test.cc` | `src/timeexpr.cc src/event.cc` | none |
-| Schema & storage (`db`, `schema`) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB; `schema_test` uses real temp files for read-only/encrypted open |
+| Schema & storage (`db`, `schema`, revision CAS, v1→v2 migration) | `core/tests/` | `src/db.cc src/schema.cc` + `sqlite3` | in-memory DB; `schema_test` uses real temp files for read-only/encrypted open and the v1 fixture |
 | Query filters/sort/pagination (`EventQuery` → SQL) | `core/tests/query_test.cc` | `src/db.cc src/schema.cc src/query.cc src/event.cc` + `sqlite3` | in-memory DB |
 | Pairwise conflicts (`findConflicts`) | `core/tests/conflict_test.cc` | `src/conflict.cc src/event.cc` | none |
 | Free-slot intervals (`freeSlots`) | `core/tests/free_test.cc` | `src/free.cc src/event.cc` | none |
@@ -105,6 +105,26 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
   later and belongs to the next day. The store is half-open `[0, 86400)` and has
   whole seconds only — do not assert microseconds until a column exists.
 - No live NTP/network in tests, ever. NTP is a runtime frontend concern.
+
+### Schema and concurrent writes
+
+`schema_test` pins the v2 storage contract:
+
+- A fresh database reports schema v2 and every inserted row starts at
+  `revision = 1`.
+- `Db::updateEvent` increments `revision` and refuses a stale one: the same
+  draft applied twice cannot overwrite the committed edit. A hand-built Event
+  with `revision = 0` is refused (the caller never read the row), and a deleted
+  id is reported as "no event" rather than "changed".
+- A real v1 fixture (the column dropped, `meta.schema_version = 1`) reopens,
+  gains `revision INTEGER NOT NULL DEFAULT 1`, keeps its row and reports v2.
+- `updated_utc` is deliberately not the token: it has whole seconds, so two
+  edits in the same second would be indistinguishable.
+
+The GUI's local-time inverse is pinned by `local_time_test`: Lima is unique,
+Berlin spring-forward is `nonexistent`, Berlin fall-back is `ambiguous` and
+chooses the earlier occurrence, and UTC round-trips. `local_time` is still the
+only file that asks the OS for a zone.
 
 ### CLI time expressions
 
@@ -180,7 +200,7 @@ doctor over an in-memory database:
   but not in conflict pairs.
 - `earliestStartUtc`/`latestEndUtc` are empty for an empty set, not zero.
 - Doctor checks are all `Ok` on a fresh in-memory DB: integrity `ok`, schema
-  `v1`, `modified` "no writes yet", sync skipped, events `0`. A write makes the
+  `v2`, `modified` "no writes yet", sync skipped, events `0`. A write makes the
   marker `Ok`; a missing/malformed marker is a Warn; a wrong schema version is
   a Fail.
 - The CLI doctor is read-only and exits `1` on any warn/fail. The e2e test
@@ -280,7 +300,7 @@ contract, option errors, and a strict "no output after stdin close" check.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 32 suites, not 25. The CLI's
+That is why the parent currently reports 34 suites, not 27. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

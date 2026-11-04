@@ -78,6 +78,40 @@ static void testBerlinFallBackIsTwentyFiveHours() {
     assert(day.endUtc - day.startUtc == 90000); // 25 hours
 }
 
+static void testLocalTimeInverseInLima() {
+    useZone("America/Lima");
+    const LocalResolution resolved = localTimeToUtc(2026, 10, 17, 10, 0, 0);
+    assert(!resolved.ambiguous);
+    assert(!resolved.nonexistent);
+    assert(resolved.utc == kSaturdayAfternoon);
+}
+
+static void testBerlinSpringForwardRejectsSkippedTime() {
+    useZone("Europe/Berlin"); // 2026-03-29: 02:00 -> 03:00
+    const LocalResolution resolved = localTimeToUtc(2026, 3, 29, 2, 30, 0);
+    assert(resolved.nonexistent);
+    assert(!resolved.ambiguous);
+    // mktime normalises the skipped wall clock to the first one that exists.
+    assert(formatClockLocal(resolved.utc) == "03:30");
+}
+
+static void testBerlinFallBackPicksEarlierOccurrence() {
+    useZone("Europe/Berlin"); // 2026-10-25: 02:00 -> 03:00, 02:xx repeats
+    const LocalResolution resolved = localTimeToUtc(2026, 10, 25, 2, 30, 0);
+    assert(resolved.ambiguous);
+    assert(!resolved.nonexistent);
+    assert(resolved.utc == 1792888200); // 02:30 CEST = 00:30Z, the earlier one
+    assert(formatClockLocal(resolved.utc) == "02:30");
+}
+
+static void testLocalTimeInverseInUtc() {
+    useZone("UTC0");
+    const LocalResolution resolved = localTimeToUtc(2026, 1, 1, 0, 0, 0);
+    assert(!resolved.ambiguous);
+    assert(!resolved.nonexistent);
+    assert(resolved.utc == 1767225600);
+}
+
 static void testWeekCrossesMonthBoundary() {
     useZone("UTC0");
     // 2026-09-30 is a Wednesday; its week runs Sun Sep 27 .. Sat Oct 3.
@@ -92,6 +126,10 @@ int main() {
     testLimaWeekStartsOnLocalSunday();
     testBerlinSpringForwardIsTwentyThreeHours();
     testBerlinFallBackIsTwentyFiveHours();
+    testLocalTimeInverseInLima();
+    testBerlinSpringForwardRejectsSkippedTime();
+    testBerlinFallBackPicksEarlierOccurrence();
+    testLocalTimeInverseInUtc();
     testWeekCrossesMonthBoundary();
     std::printf("local_time_test: all assertions passed\n");
     return 0;

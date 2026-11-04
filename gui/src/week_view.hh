@@ -77,6 +77,7 @@ private:
     bool dbOpen_ = false;
 
     long long anchorUtc_ = 0; // an instant inside the week being shown
+    long long selectedEventId_ = 0; // 0 = nothing selected; 4b's editor target
     long long nowUtc_ = 0;
     long long drawnNowUtc_ = 0; // the `now` the last built scene used
     long long dataVersion_ = -1;

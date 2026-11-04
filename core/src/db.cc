@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -101,7 +102,7 @@ private:
 
 const char *kColumns =
     "id, title, start_utc, end_utc, type, importance, urgency, alarm_offset, "
-    "hidden, notes, created_utc, updated_utc";
+    "hidden, notes, created_utc, updated_utc, revision";
 
 Event readEvent(sqlite3_stmt *stmt) {
     Event e;
@@ -120,7 +121,33 @@ Event readEvent(sqlite3_stmt *stmt) {
     e.notes = notes != nullptr ? reinterpret_cast<const char *>(notes) : "";
     e.createdUtc = sqlite3_column_int64(stmt, 10);
     e.updatedUtc = sqlite3_column_int64(stmt, 11);
+    e.revision = sqlite3_column_int64(stmt, 12);
     return e;
+}
+
+// Does `table` already have `column`? Used by the additive migration steps:
+// a fresh file gets the new schema from schema.sql, while an older file must
+// be ALTERed exactly once. Asking the table is cheaper than guessing from the
+// version number, and it makes a half-applied migration idempotent.
+arc::Result<bool> hasColumn(sqlite3 *db, const char *table, const char *column) {
+    const std::string sql = std::string("PRAGMA table_info(") + table + ")";
+    Statement stmt;
+    if (auto prepared = stmt.prepare(db, sql.c_str()); !prepared) {
+        return prepared.error();
+    }
+    for (;;) {
+        auto row = stmt.step();
+        if (!row) {
+            return row.error();
+        }
+        if (!row.value()) {
+            return false;
+        }
+        const auto *name = sqlite3_column_text(stmt.get(), 1);
+        if (name != nullptr && std::strcmp(reinterpret_cast<const char *>(name), column) == 0) {
+            return true;
+        }
+    }
 }
 
 // One row insert, shared by `insertEvent` and `importEvents`. `preserveId` is
@@ -315,11 +342,24 @@ arc::Result<void> Db::migrate() {
                               ")"};
     }
 
-    // Additive steps run here, in order, as versions are introduced:
-    //   for (int v = current + 1; v <= kSchemaVersion; ++v) applyStep(v);
-    // There are none yet — v1 is the initial schema, and schema.sql is
-    // idempotent, so a fresh or older database is brought to v1 by the CREATE
-    // statements already above.
+    // Additive steps run here, in order, as versions are introduced. Reading
+    // the table itself (not just the version) keeps the step idempotent: a
+    // fresh file already got `revision` from schema.sql above, while a v1 file
+    // needs exactly one ALTER. A half-applied migration heals on the next open.
+    if (current < 2) {
+        auto present = hasColumn(db_, "events", "revision");
+        if (!present) {
+            return present.error();
+        }
+        if (!present.value()) {
+            if (auto altered = exec(db_,
+                                    "ALTER TABLE events ADD COLUMN revision "
+                                    "INTEGER NOT NULL DEFAULT 1");
+                !altered) {
+                return altered.error();
+            }
+        }
+    }
     return setMeta("schema_version", std::to_string(kSchemaVersion));
 }
 
@@ -367,11 +407,31 @@ arc::Result<long long> Db::importEvents(const std::vector<Event> &events, bool r
 }
 
 arc::Result<void> Db::updateEvent(const Event &e) {
+    // `revision` is the compare-and-swap token, read with the event. A caller
+    // that constructs an Event by hand has not seen the stored row, so it has
+    // no right to overwrite it.
+    if (e.revision <= 0) {
+        return arc::Error{arc::ErrorKind::Other, 0,
+                          "event " + std::to_string(e.id) +
+                              " has no revision; read it before updating"};
+    }
+
     static const char *kUpdate =
         "UPDATE events SET title=?, start_utc=?, end_utc=?, type=?, importance=?, "
-        "urgency=?, alarm_offset=?, hidden=?, notes=?, updated_utc=? WHERE id=?";
+        "urgency=?, alarm_offset=?, hidden=?, notes=?, updated_utc=?, "
+        "revision=revision+1 WHERE id=? AND revision=?";
+
+    // The row and the modified marker move together. A crash between them
+    // would leave a calendar whose "last changed" stamp disagrees with its
+    // contents, which is exactly what the Syncthing policy reads.
+    if (auto begun = exec(db_, "BEGIN IMMEDIATE"); !begun) {
+        return begun.error();
+    }
+    const auto rollback = [this]() { (void)exec(db_, "ROLLBACK"); };
+
     Statement stmt;
     if (auto prepared = stmt.prepare(db_, kUpdate); !prepared) {
+        rollback();
         return prepared.error();
     }
     stmt.bindText(1, e.title);
@@ -385,14 +445,51 @@ arc::Result<void> Db::updateEvent(const Event &e) {
     stmt.bindText(9, e.notes);
     stmt.bindInt(10, utcNowSeconds()); // updated_utc, always refreshed
     stmt.bindInt(11, e.id);
+    stmt.bindInt(12, e.revision);
     if (auto done = stmt.step(); !done) {
+        rollback();
         return done.error();
     }
+
     // created_utc is deliberately not touched: an edit did not create anything.
     if (sqlite3_changes(db_) == 0) {
-        return arc::Error{arc::ErrorKind::Other, 0, "no event with id " + std::to_string(e.id)};
+        // Distinguish "deleted underneath us" from "changed underneath us";
+        // the user's next action is different in each case.
+        Statement check;
+        if (auto prepared = check.prepare(db_, "SELECT revision FROM events WHERE id = ?");
+            !prepared) {
+            rollback();
+            return prepared.error();
+        }
+        check.bindInt(1, e.id);
+        auto row = check.step();
+        if (!row) {
+            rollback();
+            return row.error();
+        }
+        if (!row.value()) {
+            rollback();
+            return arc::Error{arc::ErrorKind::Other, 0,
+                              "no event with id " + std::to_string(e.id)};
+        }
+        const long long current = sqlite3_column_int64(check.get(), 0);
+        rollback();
+        return arc::Error{arc::ErrorKind::Other, 0,
+                          "event " + std::to_string(e.id) +
+                              " changed since it was read (revision " +
+                              std::to_string(e.revision) + " -> " + std::to_string(current) +
+                              "); reload and try again"};
     }
-    return touchModified();
+
+    if (auto touched = touchModified(); !touched) {
+        rollback();
+        return touched.error();
+    }
+    if (auto committed = exec(db_, "COMMIT"); !committed) {
+        rollback();
+        return committed.error();
+    }
+    return {};
 }
 
 arc::Result<Event> Db::getEvent(long long id) {

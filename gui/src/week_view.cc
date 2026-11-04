@@ -235,6 +235,21 @@ bool WeekView::reload() {
         return false;
     }
     week_ = std::move(model.value());
+    // A selection belongs to the week it was made in. Navigating, toggling
+    // hidden rows or an external delete can all remove it; never leave an id
+    // highlighted that is not on screen.
+    if (selectedEventId_ != 0) {
+        bool present = false;
+        for (const Event &event : week_.events) {
+            if (event.id == selectedEventId_) {
+                present = true;
+                break;
+            }
+        }
+        if (!present) {
+            selectedEventId_ = 0;
+        }
+    }
     // A new week means new titles: the baked codepoint set may not cover them.
     textDirty_ = true;
     pendingFrames_ = 1;
@@ -303,7 +318,7 @@ void WeekView::drawFrame() {
     shapes_.clear();
     textQuads_.clear();
     scene_ = buildWeekScene(static_cast<int>(width), static_cast<int>(height), week_, nowUtc_,
-                            metrics, theme_, minTextPx_);
+                            metrics, theme_, minTextPx_, selectedEventId_);
     // The now-line position this scene was built for. onTimer() compares
     // against it instead of repainting every second.
     drawnNowUtc_ = nowUtc_;
@@ -353,7 +368,14 @@ void WeekView::onHostExposed() { pendingFrames_ = 1; }
 void WeekView::onKeyDownPortable(int keyCode) {
     switch (keyCode) {
     case key::Escape:
-        running_ = false;
+        // First Escape drops the selection; a second one quits. That keeps the
+        // old muscle memory while giving the editor a cancel key.
+        if (selectedEventId_ != 0) {
+            selectedEventId_ = 0;
+            pendingFrames_ = 1;
+        } else {
+            running_ = false;
+        }
         break;
     case key::Left:
         followingNow_ = false;
@@ -393,9 +415,18 @@ void WeekView::onLButtonDown(int x, int y) {
                 nowUtc_ = now;
                 followingNow_ = true;
                 goToWeek(now);
+            } else if (hit.id.rfind("event:", 0) == 0) {
+                selectedEventId_ = std::strtoll(hit.id.c_str() + 6, nullptr, 10);
+                pendingFrames_ = 1;
             }
             return;
         }
+    }
+    // A click on empty chrome clears the selection. Creating an event from a
+    // click is the next slice; clearing is already the right "deselect" verb.
+    if (selectedEventId_ != 0) {
+        selectedEventId_ = 0;
+        pendingFrames_ = 1;
     }
 }
 

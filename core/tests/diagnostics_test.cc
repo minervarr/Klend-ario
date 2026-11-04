@@ -6,6 +6,7 @@
 #include "klend_ario/db.hh"
 #include "klend_ario/diagnostics.hh"
 #include "klend_ario/event.hh"
+#include "klend_ario/schema.hh"
 
 using namespace klend_ario;
 
@@ -34,7 +35,7 @@ void testFreshDatabaseIsHealthy() {
 
     const DiagnosticCheck *schema = find(report, "schema");
     assert(schema != nullptr && schema->status == CheckStatus::Ok);
-    assert(schema->detail == "v1");
+    assert(schema->detail == "v" + std::to_string(kSchemaVersion));
 
     const DiagnosticCheck *modified = find(report, "modified");
     assert(modified != nullptr && modified->status == CheckStatus::Ok);
@@ -108,7 +109,8 @@ void testMalformedModifiedAndSchemaFailures() {
     assert(!report.healthy());
     const DiagnosticCheck *schema = find(report, "schema");
     assert(schema != nullptr && schema->status == CheckStatus::Fail);
-    assert(schema->detail == "database v999, build v1");
+    assert(schema->detail ==
+           "database v999, build v" + std::to_string(kSchemaVersion));
 }
 
 void testIntegrityCheckIsOk() {

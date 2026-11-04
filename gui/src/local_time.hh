@@ -38,6 +38,19 @@ LocalDay localDayContaining(long long utcSeconds);
 // exactly what `weekOfYearFromCivilDate` exists for.
 LocalWeek localWeekContaining(long long utcSeconds);
 
+// The inverse of localDayContaining: a local civil wall clock -> a UTC instant.
+// It is NOT total, because a DST transition can delete a time (spring forward)
+// or repeat one (fall back). The editor must be able to refuse a nonexistent
+// time and to say which occurrence an ambiguous one means.
+struct LocalResolution {
+    long long utc = 0;
+    bool ambiguous = false;   // two instants share this wall clock; `utc` is earlier
+    bool nonexistent = false; // the clock jumped over it; `utc` is the normalised one
+};
+
+LocalResolution localTimeToUtc(int year, int month, int day, int hour, int minute,
+                               int second = 0);
+
 // Local wall clock in 24-hour form ("09:30"), for event labels. Display only:
 // never parse this back into a stored value.
 std::string formatClockLocal(long long utcSeconds);

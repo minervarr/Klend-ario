@@ -33,7 +33,8 @@ bool eventTypeFromName(std::string_view name, EventType &out);
 // column exists. From the 2026-10-16 notes: 80,000 s = 22:13:20,
 // 81,000 s = 22:30:00, and the gap is 1,000 s = 16 min 40 s.
 struct Event {
-    long long id = 0; // 0 until inserted
+    long long id = 0;       // 0 until inserted
+    long long revision = 0; // compare-and-swap token; 0 until read or inserted
     std::string title;
     long long startUtc = 0;
     long long endUtc = 0;

@@ -66,8 +66,11 @@ public:
                                         bool preserveIds);
 
     // Updates the event named by `e.id`, bumping updated_utc to now and leaving
-    // created_utc as stored. Fails when no row has that id, so a stale edit is
-    // reported rather than silently lost.
+    // created_utc as stored. `e.revision` is a compare-and-swap token: it must
+    // be the value read with the event, and a row changed by another writer is
+    // refused instead of overwritten. Fails when no row has that id, when the
+    // revision is stale, or when the caller never read a revision (0). The
+    // update and the `meta.modified_utc` marker commit together.
     arc::Result<void> updateEvent(const Event &e);
 
     // The event with `id`, or an error when there is none.
