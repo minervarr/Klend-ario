@@ -183,11 +183,14 @@ std::vector<vkc::Scenario> makeScenarios(RasterFont &font, int minTextPx) {
                     fixture.editor.title, fixture.editor.start, fixture.editor.end,
                     fixture.editor.type, fixture.editor.importance,
                     fixture.editor.urgency, fixture.editor.alarmOffset,
-                    fixture.editor.notes, fixture.editor.error, fixture.editor.warning};
+                    fixture.editor.notes, fixture.editor.error, fixture.editor.warning,
+                    "UTC --",
+                    "UTC " + editorUtcHint(fixture.editor, EditorField::Start),
+                    "UTC " + editorUtcHint(fixture.editor, EditorField::End)};
                 const std::vector<int> sizes = {
                     metrics.editorTitleSize, metrics.editorLabelSize,
-                    metrics.editorFieldSize, metrics.editorButtonSize,
-                    metrics.editorErrorSize};
+                    metrics.editorHintSize, metrics.editorFieldSize,
+                    metrics.editorButtonSize, metrics.editorErrorSize};
                 inputs = mergeTextInputs(
                     inputs, collectEditorTextInputs(texts, sizes));
             }

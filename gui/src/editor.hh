@@ -11,7 +11,9 @@
 //
 // Times are LOCAL because that is what a human types. The model stores UTC;
 // localTimeToUtc is the one bridge, and it reports DST ambiguity/nonexistence
-// instead of silently choosing.
+// instead of silently choosing. The UTC instant is still drawn under each time
+// field, resolved by the same function the save uses, so the stored value is
+// never hidden behind a timezone conversion.
 
 #include <string>
 #include <string_view>
@@ -88,5 +90,12 @@ arc::Result<klend_ario::Event> buildEventFromEditor(const EditorState &state,
 // "YYYY-MM-DD HH:MM" in local time. Exposed here so the test and the future
 // scene use exactly the same shape.
 std::string formatEditorInstant(long long utcSeconds);
+
+// The UTC instant a local Start/End field currently resolves to, as
+// "YYYY-MM-DD HH:MMZ". Empty for another field, a malformed value or a
+// nonexistent DST wall clock. It reuses buildEventFromEditor's resolution,
+// including "an unchanged ambiguous field keeps the instant it was opened at",
+// so the hint can never disagree with what Save would store.
+std::string editorUtcHint(const EditorState &state, EditorField field);
 
 } // namespace klend_ario::gui

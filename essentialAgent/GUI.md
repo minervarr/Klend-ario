@@ -15,7 +15,9 @@ Phase 4a (2026-10-17): the read-only weekly view exists — window, scene,
 headless capture. Phase 4b (2026-11-04): the modal editor, revision-checked
 writes, and an in-app `F12` screenshot. The GUI now opens writable by default;
 `--read-only` keeps the viewer contract (`Db::openReadOnly` /
-`openEncryptedReadOnly`, and the file must exist).
+`openEncryptedReadOnly`, and the file must exist). The editor shows the resolved
+UTC instant under each local time field (R8); a launch-time `--timezone` is
+still open.
 
 The pure half (`klend_ario_view` and its suites) always builds. The window and
 the capture tool need `-DKLEND_BUILD_GUI=ON`, the Vulkan SDK, `slangc` and the
@@ -357,7 +359,8 @@ open.
 - **The form's local time is resolved, not parsed.** `localTimeToUtc` reports a
   spring-forward gap and a fall-back repetition. An unchanged ambiguous field
   keeps the instant it was opened with; re-parsing the text would move it an
-  hour on an unrelated edit.
+  hour on an unrelated edit. The UTC hint shares that resolver, so the preview
+  and the saved value cannot disagree.
 - **Notes is single-line in the first form.** The model/CLI/MCP allow newlines;
   the 4b editor does not grow the box. That is a known limitation, not a
   storage change.
@@ -424,6 +427,11 @@ selected event -> editorForEvent() -> EditorState (local strings)
   the second removes the row. Editing a field clears the acknowledgement.
 - **DST ambiguity** requires a second Save; the warning names the earlier
   occurrence. A nonexistent spring-forward time is refused.
+- **UTC stays visible.** Each local start/end field has a smaller `UTC
+  YYYY-MM-DD HH:MMZ` line underneath, resolved by `editorUtcHint` → the same
+  `resolveEditorField` Save uses (so an unchanged fall-back field previews the
+  instant it was opened with). A malformed or nonexistent field shows `UTC --`;
+  this is R8's "local time with UTC still visible" in the editing surface.
 - **External change:** the timer still polls `Db::dataVersion()` and reloads the
   week. The open draft is not clobbered; it shows a warning and the CAS decides
   at Save.

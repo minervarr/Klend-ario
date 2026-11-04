@@ -84,7 +84,13 @@ std::vector<std::string> editorTextStrings(const EditorState &editor) {
         "wake",
         "alarm",
         "Delete this event? Click Delete again or press Enter.",
+        "UTC --",
     };
+    // The UTC hints are resolved from the live field text; an invalid value
+    // draws the placeholder above. ASCII-only, but listing them keeps the
+    // "every string the modal can draw" contract true by construction.
+    texts.push_back("UTC " + editorUtcHint(editor, EditorField::Start));
+    texts.push_back("UTC " + editorUtcHint(editor, EditorField::End));
     texts.push_back(editor.title);
     texts.push_back(editor.start);
     texts.push_back(editor.end);
@@ -301,8 +307,8 @@ void WeekView::ensureText() {
     TextInputs inputs = collectTextInputs(week_, metrics);
     if (editor_.open) {
         const std::vector<int> editorSizes = {
-            metrics.editorTitleSize, metrics.editorLabelSize, metrics.editorFieldSize,
-            metrics.editorButtonSize, metrics.editorErrorSize};
+            metrics.editorTitleSize, metrics.editorLabelSize, metrics.editorHintSize,
+            metrics.editorFieldSize, metrics.editorButtonSize, metrics.editorErrorSize};
         inputs = mergeTextInputs(
             inputs, collectEditorTextInputs(editorTextStrings(editor_), editorSizes));
     }

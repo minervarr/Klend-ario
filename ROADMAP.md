@@ -78,8 +78,9 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
   opt-in via file/env despite the recorded "encrypted by default" decision.
 - Packaging/install: no `install()` rules, `.desktop`, icon, systemd unit,
   release artifact.
-- Time zones: the GUI shows the system local zone only and does not show UTC;
-  the CLI is UTC-only. Requirement R8 is not fully met.
+- Time zones: the editor shows the resolved UTC instant under each local
+  start/end field, but the GUI has no launch-time `--timezone` yet and uses the
+  system zone. The CLI is UTC-only. That part of R8/D5 is still open.
 - NTP (R9), notes (R3), sleep (R5), G-SHOCK (R4), Android (Phase 7).
 - Storage benchmark (R7).
 
@@ -137,9 +138,10 @@ be a first-class writer without becoming a second source of truth.
       clipboard; no second text engine.
 - [x] Defaults: new event starts now, one hour; title focused; `Esc` cancels.
       Dirty-state warning is not implemented; `Esc` discards without asking.
-- [ ] Time input: the form shows local wall clock only, not UTC alongside it.
-      A nonexistent DST time is refused; an ambiguous one requires a second
-      Save and names the earlier occurrence.
+- [x] Time input: the form shows the local wall clock **and** the resolved UTC
+      instant under each field, from the same resolver Save uses. A nonexistent
+      DST time is refused; an ambiguous one requires a second Save and names the
+      earlier occurrence.
 - [x] Error surface: stale edit, constraint failure, wrong key at open,
       read-only deployment.
 - [x] **Not in 4b:** drag-to-move/resize, recurrence, multi-select, multiline
@@ -249,11 +251,14 @@ menu, and have alarms start at login.
 - [x] Decide D5: system local zone by default; a launch-time `--timezone`
       (applied before threads start) for another zone; the GUI shows UTC
       alongside. The CLI stays UTC-only.
-- [ ] GUI shows **local time and UTC** (header, editor, or a compact legend).
+- [x] GUI shows **local time and UTC**. The editor draws `UTC YYYY-MM-DD HH:MMZ`
+      under each local start/end field; a malformed field shows `UTC --`, never
+      a stale value.
 - [ ] `--timezone` is applied before threads start; `local_time` keeps the
       23/25-hour day contract.
-- [ ] Tests: Lima, Berlin spring/fall, ambiguous/nonexistent local times
-      (the inverse is already covered).
+- [x] Tests: Lima, Berlin spring/fall, ambiguous/nonexistent local times. The
+      inverse is pinned by `local_time_test`; `editor_test` pins the UTC hint,
+      including the unchanged fall-back field keeping its opened instant.
 
 ### 8.2 Sync and data safety
 
@@ -451,9 +456,8 @@ Source: R4; open question 6.
 
 ## 17. Next actions
 
-1. Show UTC next to the editor's local start/end (R8).
-2. Measure the edit path (frame count, save time, re-bake) and record it.
-3. Milestone 2: PipeWire sound, daemon single-instance/autostart.
-4. Milestone 3: encrypted-by-default first run and key prompts.
-5. Milestone 4: install rules, desktop entry, systemd unit.
-6. Then the 1.1 sleep scheduler.
+1. Measure the edit path (frame count, save time, re-bake) and record it.
+2. Milestone 2: PipeWire sound, daemon single-instance/autostart.
+3. Milestone 3: encrypted-by-default first run and key prompts.
+4. Milestone 4: install rules, desktop entry, systemd unit.
+5. Then the 1.1 sleep scheduler.

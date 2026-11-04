@@ -70,6 +70,22 @@ void addLabel(Scene &scene, int x, int y, int width, std::string_view label,
     }
 }
 
+// The UTC line is an annotation, smaller than a label and dimmer than the
+// value it annotates: it must be readable without competing with the field.
+void addHint(Scene &scene, int x, int y, int width, std::string_view label,
+             const UiMetrics &metrics, const Theme &theme, const TextMetrics &text) {
+    const std::string shown = fitText(label, metrics.editorHintSize, width, text);
+    if (!shown.empty()) {
+        scene.ops.push_back(textOp(Rect{x, y, width, metrics.editorHintSize}, shown,
+                                   metrics.editorHintSize, theme.dimText));
+    }
+}
+
+std::string utcHintLine(const EditorState &state, EditorField field) {
+    const std::string resolved = editorUtcHint(state, field);
+    return resolved.empty() ? std::string("UTC --") : "UTC " + resolved;
+}
+
 void addField(Scene &scene, const Rect &box, EditorField field, const EditorState &state,
               const UiMetrics &metrics, const Theme &theme, const TextMetrics &text) {
     const bool focused = state.focus == field;
@@ -145,10 +161,11 @@ Scene buildEditorScene(int width, int height, const EditorState &state,
     // rows + title + status + actions + padding, clamped to the content.
     const int labelGapEstimate = std::max(1, m.labelPad / 2);
     const int rowEstimate = m.editorLabelSize + labelGapEstimate + m.editorFieldHeight;
+    const int hintEstimate = m.editorHintSize + labelGapEstimate;
     const int buttonEstimate = std::max(m.buttonHeight, m.editorFieldHeight);
     const int needed = 2 * innerPad + m.editorTitleSize + 2 * m.editorRowGap +
-                       5 * (rowEstimate + m.editorRowGap) + m.editorErrorSize +
-                       buttonEstimate;
+                       5 * (rowEstimate + m.editorRowGap) + hintEstimate +
+                       m.editorErrorSize + buttonEstimate;
     const int panelHeight = std::min(
         std::max(content.h - 2 * pad, 320), std::max({needed, 300, content.h / 2}));
     const Rect panel{content.x + (content.w - panelWidth) / 2,
@@ -192,7 +209,15 @@ Scene buildEditorScene(int width, int height, const EditorState &state,
     addField(scene, fieldBox(inner.x, half), EditorField::Start, state, m, theme, text);
     addField(scene, fieldBox(inner.x + half + colGap, halfRight), EditorField::End, state,
              m, theme, text);
-    y += rowH + gap;
+    // Local is what a human types; UTC is what is stored. Both stay visible, and
+    // the hint is resolved by the same function Save uses (including an
+    // unchanged fall-back time keeping its opened instant).
+    const int hintY = y + rowH + labelGap;
+    addHint(scene, inner.x, hintY, half, utcHintLine(state, EditorField::Start), m, theme,
+            text);
+    addHint(scene, inner.x + half + colGap, hintY, halfRight,
+            utcHintLine(state, EditorField::End), m, theme, text);
+    y += rowH + labelGap + m.editorHintSize + gap;
 
     // Type / Importance / Urgency.
     const int third = (inner.w - 2 * colGap) / 3;

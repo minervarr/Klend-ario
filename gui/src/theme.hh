@@ -74,6 +74,7 @@ struct UiMetrics {
     // above every field and a taller hit target than an event label.
     int editorTitleSize = 0;
     int editorLabelSize = 0;
+    int editorHintSize = 0; // the UTC line under a local time field
     int editorFieldSize = 0;
     int editorButtonSize = 0;
     int editorErrorSize = 0;

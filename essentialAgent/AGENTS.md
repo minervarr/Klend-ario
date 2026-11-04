@@ -228,6 +228,9 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
 - **A local time input is resolved, not parsed.** `localTimeToUtc` reports a
   spring-forward gap and a fall-back repetition. An unchanged ambiguous field
   keeps the instant it was opened with; do not re-parse it on an unrelated edit.
+  The editor's `UTC ...Z` hint must use the same `resolveEditorField` as Save,
+  never a second parse, or the preview and the stored value can disagree in a
+  fall-back hour.
 - **`F12` is the in-app screenshot.** Render with present disabled, read the
   frame back, write the PNG to `--screenshot-dir`/the app's data directory, then
   re-enable present and arm one redraw. Never read back a presented image: the

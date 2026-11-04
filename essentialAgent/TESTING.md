@@ -137,11 +137,16 @@ importance/urgency, bad type and a non-integer alarm offset are rejected;
 February 30 is rejected before `mktime` can normalise it; a spring-forward wall
 clock is refused and a fall-back one saves with a warning naming the earlier
 occurrence. An unchanged ambiguous field keeps the instant it was opened with.
+The UTC hint is pinned to the same answer: Berlin 09:00 previews `08:00Z`, a
+malformed field previews nothing, and the second 02:30 of a fall-back day
+previews its opened instant rather than the earlier one.
 
 `editor_scene_test` asserts the modal without a GPU: every field/hit id exists,
 the new form has Save/Cancel but no Delete, the edit form adds Delete and a
 confirmation prompt, the focus ring and hidden toggle use the selection colour,
-and error/warning text is visible in the right colour.
+and error/warning text is visible in the right colour. The `UTC ...Z` hint is
+drawn under its time field in the dim colour, tracks the field text, and a bad
+value becomes `UTC --` instead of a stale instant.
 
 `editor_store_test` drives the real storage path over an in-memory DB: insert a
 form, edit it (revision +1), refuse the same stale draft after the committed

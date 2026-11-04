@@ -117,7 +117,7 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Build tool & GUI | `scripts/klend_ario_builder.pyz` probes for `slangc`/`$VULKAN_SDK` and the Wayland/xkb `pkg-config` modules, then passes `-DKLEND_BUILD_GUI=ON`; `--gui`/`--no-gui` override, the menu asks. The CMake option defaults to OFF so a machine without the SDK still configures |
 | GUI build | `-DKLEND_BUILD_GUI=ON` (default OFF): the window + capture tool need the Vulkan SDK, `slangc` and Wayland/xkb. `klend_ario_view` and its pure suites always build |
 | GUI mode | **Writable by default** (Phase 4b): `Db::open`/`openEncrypted`; `--read-only` keeps `openReadOnly`/`openEncryptedReadOnly` and requires an existing file. `--hidden` switches the query to `Visibility::Any` |
-| GUI editing | Modal form (`gui/src/editor` → `editor_scene` → `editor_store`): title, local start/end, type, importance, urgency, alarm offset, hidden and single-line notes. Delete asks twice. Saves carry `Event.revision` and a stale draft is refused |
+| GUI editing | Modal form (`gui/src/editor` → `editor_scene` → `editor_store`): title, local start/end (with the resolved UTC instant underneath), type, importance, urgency, alarm offset, hidden and single-line notes. Delete asks twice. Saves carry `Event.revision` and a stale draft is refused |
 | GUI screenshot | `F12` renders with present disabled, reads the frame back (`Renderer::readbackLastFrame`), writes PNG to `--screenshot-dir` or the app's data directory, then re-enables present and redraws. Works in Release; includes the modal |
 | GUI refresh | One `EventQuery` per visible week; a 1 s poll of `Db::dataVersion()` reloads when ANOTHER connection commits (that is how an MCP edit appears live). The now-line redraws on a timer |
 | GUI local days | `gui/src/local_time` is the ONLY place a timezone is read; it returns local civil days with `[startUtc, endUtc)` bounds (23/25 h on DST days). Layout/scene take instants and never call the OS |
@@ -145,8 +145,11 @@ These were decided for this repository specifically, on top of `merged.md`:
 - **Local wall-clock input is resolved, not parsed.** `localTimeToUtc` returns
   the instant plus an `ambiguous`/`nonexistent` flag. A spring-forward time is
   refused; a fall-back time chooses the earlier occurrence and says so. The
-  form currently shows local time only; UTC alongside it is the remaining R8
-  item (`ROADMAP.md` §8.1).
+  form draws the resolved UTC instant under each local start/end field, so the
+  stored value stays visible while the user types (R8). The hint calls the same
+  resolver as Save, including the unchanged-ambiguous rule: it cannot show a
+  different instant than the one that would be stored. An invalid field shows
+  `UTC --`, never a stale value.
 - **Saves are compare-and-swap.** `Event.revision` is the token read with the
   row; `Db::updateEvent` refuses a stale one. A second-resolution
   `updated_utc` alone cannot tell two edits in the same second apart.
@@ -370,6 +373,11 @@ These are truths this workspace already paid for. Do not relearn them.
   (spring forward) or repeated (fall back). `localTimeToUtc` reports both; an
   unchanged ambiguous field keeps the instant it was opened with, or editing a
   title would move the event an hour.
+- **A UTC preview must be the save's answer, not a second parse.** The editor's
+  `UTC ...Z` hint under a local field is computed by `resolveEditorField`, the
+  same function `buildEventFromEditor` uses — including "an unchanged ambiguous
+  field keeps its opened instant". A preview that re-parsed the text would
+  disagree with Save once a year, on exactly the day that matters.
 - **A local day is not 86,400 seconds.** The model is UTC, but the view's columns
   are local days; a spring-forward day is 23 hours and a fall-back one is 25.
   Passing `dayStart` alone and assuming a day length put every event after the

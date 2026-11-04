@@ -43,6 +43,8 @@ UiMetrics metricsFor(const Rect &content, int minTextPx) {
 
     m.editorTitleSize = textScaled(h, 0.040, 16, minTextPx);
     m.editorLabelSize = textScaled(h, 0.022, 10, minTextPx);
+    // Smaller than a label: it annotates the field, it is not a second label.
+    m.editorHintSize = textScaled(h, 0.018, 9, minTextPx);
     m.editorFieldSize = textScaled(h, 0.026, 12, minTextPx);
     m.editorButtonSize = textScaled(h, 0.024, 11, minTextPx);
     m.editorErrorSize = textScaled(h, 0.020, 9, minTextPx);

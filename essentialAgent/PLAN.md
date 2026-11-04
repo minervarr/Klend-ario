@@ -327,6 +327,15 @@ ctest --test-dir build --output-on-failure      # all pass
 
 Newest first. One line per meaningful change.
 
+- **R8 editor time display (2026-11-04).** The edit form now draws the resolved
+  UTC instant (`UTC YYYY-MM-DD HH:MMZ`) under each local start/end field.
+  `editorUtcHint` shares `resolveEditorField` with `buildEventFromEditor`,
+  including "an unchanged ambiguous field keeps its opened instant"; a malformed
+  or nonexistent field shows `UTC --`. `editor_test`/`editor_scene_test` pin the
+  conversion, the DST case and the no-stale-value rule. The headless capture
+  tool now bakes `editorHintSize` and the hint strings. **37/37 suites pass**;
+  the demo still exits `0`. Remaining R8/D5 item: launch-time `--timezone`.
+
 - **4b editor + native screenshot (2026-11-04).** Added `gui/src/editor`
   (pure Event ↔ local fields, validation, DST gaps/repeats), `editor_scene`
   (modal ops + `field:*`/`editor:*` hits), and `editor_store` (insert / CAS

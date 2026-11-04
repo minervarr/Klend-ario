@@ -92,6 +92,36 @@ bool parseEditorInstant(std::string_view text, long long &out, bool &ambiguous,
     return true;
 }
 
+// Resolve one local field exactly the way Save does. An unchanged field keeps
+// the instant it was opened with: the text alone cannot distinguish the two
+// 02:30s of a fall-back day, and re-parsing on an unrelated title edit would
+// move the event an hour. The UTC hint calls this too, so the line under the
+// field and the stored value cannot drift apart.
+bool resolveEditorField(const EditorState &state, EditorField field, long long &out,
+                        bool &ambiguous, std::string &why) {
+    const bool start = field == EditorField::Start;
+    const std::string &text = start ? state.start : state.end;
+    if (!parseEditorInstant(text, out, ambiguous, why)) {
+        return false;
+    }
+    const long long original = start ? state.originalStartUtc : state.originalEndUtc;
+    if (original != 0 && text == formatEditorInstant(original)) {
+        out = original;
+        ambiguous = false;
+    }
+    return true;
+}
+
+std::string formatUtcHint(long long utcSeconds) {
+    // The ISO form is the core's UTC contract; reuse it instead of a second
+    // date formatter, then render it in the editor's local-field shape.
+    const std::string iso = klend_ario::formatIso8601(utcSeconds);
+    if (iso.size() >= 16 && iso[10] == 'T') {
+        return iso.substr(0, 10) + " " + iso.substr(11, 5) + "Z";
+    }
+    return iso;
+}
+
 } // namespace
 
 const char *editorFieldName(EditorField field) {
@@ -151,6 +181,19 @@ std::string formatEditorInstant(long long utcSeconds) {
     return formatDateTimeLocal(utcSeconds);
 }
 
+std::string editorUtcHint(const EditorState &state, EditorField field) {
+    if (field != EditorField::Start && field != EditorField::End) {
+        return {};
+    }
+    long long utc = 0;
+    bool ambiguous = false;
+    std::string why;
+    if (!resolveEditorField(state, field, utc, ambiguous, why)) {
+        return {};
+    }
+    return formatUtcHint(utc);
+}
+
 EditorState editorForNew(long long startUtc) {
     EditorState state;
     state.open = true;
@@ -200,24 +243,11 @@ arc::Result<klend_ario::Event> buildEventFromEditor(const EditorState &state,
     bool endAmbiguous = false;
     std::string why;
 
-    if (!parseEditorInstant(state.start, startUtc, startAmbiguous, why)) {
+    if (!resolveEditorField(state, EditorField::Start, startUtc, startAmbiguous, why)) {
         return arc::Error{arc::ErrorKind::Other, 0, "start: " + why};
     }
-    if (!parseEditorInstant(state.end, endUtc, endAmbiguous, why)) {
+    if (!resolveEditorField(state, EditorField::End, endUtc, endAmbiguous, why)) {
         return arc::Error{arc::ErrorKind::Other, 0, "end: " + why};
-    }
-    // An unchanged ambiguous field keeps the instant it was opened at. The
-    // text alone cannot distinguish the two 02:30s, and re-parsing would move
-    // the event by an hour on an unrelated title edit.
-    if (state.originalStartUtc != 0 &&
-        state.start == formatEditorInstant(state.originalStartUtc)) {
-        startUtc = state.originalStartUtc;
-        startAmbiguous = false;
-    }
-    if (state.originalEndUtc != 0 &&
-        state.end == formatEditorInstant(state.originalEndUtc)) {
-        endUtc = state.originalEndUtc;
-        endAmbiguous = false;
     }
     if (endUtc < startUtc) {
         return arc::Error{arc::ErrorKind::Other, 0, "end must be at or after start"};

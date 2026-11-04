@@ -97,6 +97,30 @@ static void testNewEventChrome() {
     assert(findText(scene, "2026-11-05 09:00") != nullptr);
     assert(findText(scene, "event") != nullptr);
     assert(findText(scene, "50") != nullptr);
+
+    // UTC is visible under each local time field, in the dim annotation colour,
+    // and below the field rather than over it.
+    const HitTarget *startField = findHit(scene, "field:start");
+    const Op *startHint = findText(scene, "UTC 2026-11-05 08:00Z");
+    const Op *endHint = findText(scene, "UTC 2026-11-05 09:00Z");
+    assert(startField != nullptr && startHint != nullptr && endHint != nullptr);
+    assert(startHint->color.r == defaultTheme().dimText.r);
+    assert(startHint->rect.y >= startField->rect.y + startField->rect.h);
+}
+
+static void testUtcHintTracksTheField() {
+    setenv("TZ", "UTC0", 1);
+    tzset();
+
+    EditorState state = editorForNew(1793865600);
+    state.start = "2026-11-05 10:15";
+    Scene scene = build(state);
+    assert(findText(scene, "UTC 2026-11-05 10:15Z") != nullptr);
+    assert(findText(scene, "UTC 2026-11-05 09:00Z") != nullptr); // end unchanged
+
+    state.start = "nope";
+    scene = build(state);
+    assert(findText(scene, "UTC --") != nullptr);
 }
 
 static void testFocusRingAndHiddenToggle() {
@@ -164,6 +188,7 @@ static void testErrorAndWarningAreVisible() {
 
 int main() {
     testNewEventChrome();
+    testUtcHintTracksTheField();
     testFocusRingAndHiddenToggle();
     testEditEventAddsDeleteAndConfirm();
     testErrorAndWarningAreVisible();

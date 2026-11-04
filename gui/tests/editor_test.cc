@@ -49,6 +49,11 @@ static void testEventRoundTripsThroughTheForm() {
     assert(state.hidden);
     assert(state.notes == "bring notes");
 
+    // The stored instant stays visible: 09:00 Berlin is 08:00Z.
+    assert(editorUtcHint(state, EditorField::Start) == "2026-11-05 08:00Z");
+    assert(editorUtcHint(state, EditorField::End) == "2026-11-05 09:00Z");
+    assert(editorUtcHint(state, EditorField::Title).empty());
+
     std::string warning;
     auto built = buildEventFromEditor(state, warning);
     assert(built.ok());
@@ -198,6 +203,26 @@ static void testUnchangedAmbiguousFieldKeepsItsInstant() {
     assert(built.value().startUtc == 1792891800);
     assert(built.value().endUtc == 1792897200);
     assert(warning.empty());
+    // The hint must agree with Save, not with a fresh parse of the text.
+    assert(editorUtcHint(state, EditorField::Start) == "2026-10-25 01:30Z");
+}
+
+static void testUtcHintFollowsTheField() {
+    useZone("UTC0");
+    EditorState state = editorForNew(1793865600);
+    assert(editorUtcHint(state, EditorField::Start) == "2026-11-05 08:00Z");
+
+    state.start = "2026-11-05 09:30";
+    assert(editorUtcHint(state, EditorField::Start) == "2026-11-05 09:30Z");
+
+    // A malformed or nonexistent field has no UTC answer; the scene draws
+    // "UTC --" rather than a stale value.
+    state.start = "not a time";
+    assert(editorUtcHint(state, EditorField::Start).empty());
+
+    useZone("Europe/Berlin");
+    state.start = "2026-03-29 02:30"; // skipped by spring forward
+    assert(editorUtcHint(state, EditorField::Start).empty());
 }
 
 static void testFieldOrder() {
@@ -225,6 +250,7 @@ int main() {
     testValidationRejectsBadFields();
     testDstTimesAreResolvedNotGuessed();
     testUnchangedAmbiguousFieldKeepsItsInstant();
+    testUtcHintFollowsTheField();
     testFieldOrder();
     std::printf("editor_test: all assertions passed\n");
     return 0;

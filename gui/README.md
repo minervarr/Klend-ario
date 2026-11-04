@@ -24,7 +24,7 @@ one sitting.
 | `src/theme.{hh,cc}` | chrome palette + `UiMetrics` derived from the content rect (no DPI query, no device pixels) |
 | `src/scene.{hh,cc}` | `WeekModel` + `TextMetrics` → `Scene` (draw ops and hit targets) |
 | `src/week_store.{hh,cc}` | `Db` + local week → `WeekModel`, one `EventQuery` |
-| `src/editor.{hh,cc}` | the edit form as pure state: Event ↔ local-time fields, validation, DST flags |
+| `src/editor.{hh,cc}` | the edit form as pure state: Event ↔ local-time fields, the resolved UTC hint, validation, DST flags |
 | `src/editor_scene.{hh,cc}` | the modal's draw ops and `field:*` / `editor:*` hit targets |
 | `src/editor_store.{hh,cc}` | the form → `Db::insertEvent` / CAS `updateEvent` / delete bridge |
 | `src/text_inputs.{hh,cc}` | the codepoint/size set the glyph cache must bake before measuring |
@@ -63,6 +63,9 @@ Keys: `Left`/`Right` previous/next week · `T` today · `H` toggle hidden blocks
 (sleep) · `N` new · `Enter` edit selected · `Esc` cancel/close or quit ·
 `F12` screenshot. The header buttons do the same with the mouse. Click an event
 once to select it, again (or `Enter`) to open the form; Delete asks twice.
+Each local start/end field has the resolved `UTC YYYY-MM-DD HH:MMZ` instant
+underneath, so the stored value is visible while typing. A malformed or
+nonexistent field shows `UTC --`.
 
 It is **writable by default** (Phase 4b): the form saves through
 `editor_store` → `Db::insertEvent` / `Db::updateEvent`, the latter a revision
@@ -139,6 +142,10 @@ cut. The full rationale, traps and capture checks are in
 - **Local time is resolved, not parsed.** `localTimeToUtc` flags a
   spring-forward gap and a fall-back repetition; an unchanged ambiguous field
   keeps its original instant. `editor_test` pins all three cases.
+- **The UTC hint is the save's answer.** `editorUtcHint` resolves through the
+  same `resolveEditorField` as `buildEventFromEditor`, so the line under a time
+  field cannot preview a different instant than Save would store. Do not
+  re-parse the field text in the scene to build the hint.
 - **A screenshot must not present first.** `F12` renders with present disabled,
   reads the image back, then re-enables present on the next frame. Reading a
   presented image can copy recycled memory.

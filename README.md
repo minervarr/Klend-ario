@@ -155,7 +155,8 @@ Keys: `Left`/`Right` week, `T` today, `H` toggle hidden blocks, `N` new,
 quit), `F12` screenshot. The header's `< today >` buttons do the same with the
 mouse. Click an event once to select it, again (or `Enter`) to open the form;
 the form has title, local start/end, type, importance, urgency, alarm offset,
-hidden and notes. Delete asks for a second confirmation.
+hidden and notes. The resolved UTC instant is shown under each time field, so
+the stored value stays visible. Delete asks for a second confirmation.
 
 The GUI writes through `Db::updateEvent`'s revision compare-and-swap: a save
 made against a row another process changed is refused, not silently applied.

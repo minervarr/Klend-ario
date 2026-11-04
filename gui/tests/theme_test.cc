@@ -71,6 +71,8 @@ static void testReadableFloorClampsTextRoles() {
     assert(small.dayDateSize >= 16);
     assert(small.eventTimeSize >= 16);
     assert(small.eventTitleSize >= 16);
+    assert(small.editorHintSize >= 16);
+    assert(small.editorLabelSize >= 16);
     assert(small.labelPad >= 2);
     assert(small.hatchSpacing >= 6);
 
