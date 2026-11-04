@@ -1,7 +1,7 @@
 # ROADMAP — what is left to finish
 
 **Status:** 2026-11-04
-**Baseline:** 34/34 CTest suites pass; `demo/klend_ario_demo.py` exits `0`;
+**Baseline:** 35/35 CTest suites pass; `demo/klend_ario_demo.py` exits `0`;
 the weekly view builds, runs and captures headlessly.
 **Relationship to `PLAN.md`:** this file is the forward-looking finish line.
 [`essentialAgent/PLAN.md`](essentialAgent/PLAN.md) remains the detailed phase
@@ -64,7 +64,7 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
   and selection.
 - `opencode.jsonc` restored; the repo skill and MCP server load from the
   checkout.
-- 34 suites, including the seven `pe-holiday-calc` child suites.
+- 35 suites, including the seven `pe-holiday-calc` child suites.
 - Demo: 21 CLI verbs, five MCP tools, one alarm trigger, encrypted DB checks.
 
 ### Not done
@@ -123,6 +123,9 @@ be a first-class writer without becoming a second source of truth.
 
 ### 4.3 Editor UI
 
+- [x] **Pure form state.** `gui/src/editor` turns an Event into local-time
+      fields and back, validates every field, and refuses/flags DST wall
+      clocks. `editor_test` pins the round-trip and the invalid cases.
 - [ ] Fields: title, start/end (or duration), type, importance, urgency, alarm
       offset, hidden, notes. Reuse vk_canvas `TextFieldState` / `textarea` and
       the host clipboard seam; do not invent a text engine.

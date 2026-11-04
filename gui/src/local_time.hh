@@ -55,6 +55,10 @@ LocalResolution localTimeToUtc(int year, int month, int day, int hour, int minut
 // never parse this back into a stored value.
 std::string formatClockLocal(long long utcSeconds);
 
+// "2026-11-05 09:30" — the editor's local-time input shape. The editor shows
+// the UTC instant alongside it; this string is never stored.
+std::string formatDateTimeLocal(long long utcSeconds);
+
 // "17" — the date number a day header shows.
 std::string formatDayNumber(const LocalDay &day);
 

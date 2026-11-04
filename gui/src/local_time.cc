@@ -141,6 +141,14 @@ std::string formatClockLocal(long long utcSeconds) {
     return buffer;
 }
 
+std::string formatDateTimeLocal(long long utcSeconds) {
+    const std::tm tm = localTm(utcSeconds);
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d", tm.tm_year + 1900,
+                  tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min);
+    return buffer;
+}
+
 std::string formatDayNumber(const LocalDay &day) {
     char buffer[4];
     std::snprintf(buffer, sizeof(buffer), "%d", day.day);

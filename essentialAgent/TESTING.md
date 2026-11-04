@@ -85,7 +85,8 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | CLI end-to-end (`add`/`edit`/`duplicate`/`list`/`today`/`week`/`next`/`agenda`/`search`/`conflicts`/`free`/`alarms`/`stats`/`doctor`/`export`/`import`/`completion`/`show`/`rm`/`holidays`) | `cli/tests/` | `klend_ario_core` | temp DB (not needed by `holidays`/`completion`) |
 | Holiday adapter (`std::optional` → `arc::Result`) | `core/tests/holidays_test.cc` | `src/holidays.cc` + `pe_holiday_calc` | none |
 | Week geometry, DST-length days, overlap clusters | `gui/tests/week_layout_test.cc` | `src/week_layout.cc` | none |
-| Local civil days (Lima, Berlin 23/25 h) | `gui/tests/local_time_test.cc` | `src/local_time.cc` | pinned `TZ`, no network |
+| Local civil days (Lima, Berlin 23/25 h) and the local-time inverse | `gui/tests/local_time_test.cc` | `src/local_time.cc` | pinned `TZ`, no network |
+| Edit form state (Event ↔ fields, validation, DST refusal) | `gui/tests/editor_test.cc` | `src/editor.cc src/local_time.cc` + core `event.cc` | pinned `TZ`, no DB |
 | Chrome metrics + palette | `gui/tests/theme_test.cc` | `src/theme.cc src/week_layout.cc` | none |
 | The weekly view's draw ops (colours, labels, borders, tail, now-line) | `gui/tests/scene_test.cc` | `src/scene.cc src/theme.cc src/week_layout.cc src/local_time.cc` + `core/src/event.cc` | none; fake `TextMetrics` |
 | DB → week model (one query, label, holidays) | `gui/tests/week_store_test.cc` | `src/week_store.cc` + core sources | in-memory DB, pinned `TZ` |
@@ -125,6 +126,14 @@ The GUI's local-time inverse is pinned by `local_time_test`: Lima is unique,
 Berlin spring-forward is `nonexistent`, Berlin fall-back is `ambiguous` and
 chooses the earlier occurrence, and UTC round-trips. `local_time` is still the
 only file that asks the OS for a zone.
+
+`editor_test` pins the form without a window: an Event round-trips through
+`editorForEvent` → `buildEventFromEditor` with its id and revision intact; a new
+event defaults to one hour; empty title, bad instants, reversed ranges, bad
+importance/urgency, bad type and a non-integer alarm offset are rejected;
+February 30 is rejected before `mktime` can normalise it; a spring-forward wall
+clock is refused and a fall-back one saves with a warning naming the earlier
+occurrence.
 
 ### CLI time expressions
 
@@ -300,7 +309,7 @@ contract, option errors, and a strict "no output after stdin close" check.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 34 suites, not 27. The CLI's
+That is why the parent currently reports 35 suites, not 27. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

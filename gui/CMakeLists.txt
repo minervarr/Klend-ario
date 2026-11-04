@@ -19,6 +19,7 @@
 add_library(klend_ario_view STATIC
     src/week_layout.cc
     src/local_time.cc
+    src/editor.cc
     src/theme.cc
     src/scene.cc
     src/week_store.cc
@@ -47,6 +48,14 @@ klend_ario_add_test(week_layout_test
 klend_ario_add_test(local_time_test
     SOURCES  tests/local_time_test.cc src/local_time.cc
     INCLUDES src)
+
+# The edit form as pure state: event -> fields -> event, validation, and the
+# DST cases the editor must refuse or flag. No window, no database, no GPU.
+klend_ario_add_test(editor_test
+    SOURCES  tests/editor_test.cc src/editor.cc src/local_time.cc
+             ${CMAKE_SOURCE_DIR}/core/src/event.cc
+    INCLUDES src ${CMAKE_SOURCE_DIR}/core/include
+    LIBS     arc_util)
 
 # Chrome metrics and palette: derived from the content rect, never from DPI.
 klend_ario_add_test(theme_test

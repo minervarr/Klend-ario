@@ -325,8 +325,10 @@ Newest first. One line per meaningful change.
   migration (v1→v2, additive `revision DEFAULT 1`). The GUI gained the local
   wall-clock inverse with DST flags, `event:<id>` scene hit targets and a
   selection highlight; the window selects on click and clears with
-  Escape/empty click. No editor or write path yet. 34/34 suites pass; the demo
-  still exits `0`. Decisions recorded in `MEMORY.md` §4/§7/§9.
+  Escape/empty click. The pure edit form (`gui/src/editor`) turns an Event into
+  fields and back, validates ranges, and refuses/flags DST wall clocks;
+  `editor_test` pins it. No editor window or write path yet. 35/35 suites pass;
+  the demo still exits `0`. Decisions recorded in `MEMORY.md` §4/§7/§9.
 
 - **GUI performance pass — demand-driven repaint (2026-10-20).** The weekly
   view no longer repaints once a second. `gui/src/refresh.*` is a pure
