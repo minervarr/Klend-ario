@@ -14,6 +14,7 @@
 // instead of silently choosing.
 
 #include <string>
+#include <string_view>
 
 #include "arc/result.hh"
 #include "klend_ario/event.hh"
@@ -37,7 +38,9 @@ enum class EditorField {
 };
 
 const char *editorFieldName(EditorField field);
+bool editorFieldFromName(std::string_view name, EditorField &out);
 EditorField editorFieldNext(EditorField field, bool backward);
+bool editorFieldIsText(EditorField field);
 
 struct EditorState {
     bool open = false;
@@ -63,6 +66,10 @@ struct EditorState {
 
     std::string error;   // last parse/validation failure; cleared on success
     std::string warning; // e.g. a DST-ambiguous time; saving is still allowed
+    bool confirmDelete = false; // Delete pressed once: ask before destroying
+    // A DST-ambiguous time needs an explicit second Save; editing a field
+    // clears this so a changed time is warned about again.
+    bool acceptAmbiguous = false;
 };
 
 // A new event starting at `startUtc`, one hour long. The caller has already

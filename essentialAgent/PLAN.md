@@ -13,7 +13,7 @@ as work lands; this file is the tracker.*
 | 1 | Core — SQLite schema + storage + model, with tests | **done** |
 | 2 | **CLI MVP** — `add` / `list` / `show` / `rm` | **done** — CLI frozen 2026-10-17 |
 | 3 | Encryption (`SQLite3MultipleCiphers`) + Syncthing sync policy | **done** |
-| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **4a done** — read-only window + headless capture; edit UI next |
+| 4 | GUI — weekly 16:9 view (`vk_canvas` + `app_shell`) | **4b done** — view, editor, in-app screenshot; 4c overlay/print post-MVP |
 | 5 | MCP server — local, read/write, minimal tool surface, tiers | **done** |
 | 6 | Alarms — libnotify + PipeWire / Android native | **done** (notify; PipeWire sound is a named gap) |
 | 7 | Android platform layer + storage permissions | **deferred** — desktop-first (2026-10-16); see `REQUIREMENTS.md` |
@@ -162,7 +162,7 @@ and adds no CLI or schema surface.
 
 ---
 
-## Phase 4 — the weekly view (4a shipped 2026-10-17)
+## Phase 4 — the weekly view (4a 2026-10-17, 4b 2026-11-04)
 
 Phase 4 paused on 2026-10-17 for the CLI freeze, then resumed. The pure geometry
 shipped first; 4a adds the scene, the window and a way to look at the result
@@ -202,9 +202,10 @@ write paths, so the first GUI cannot corrupt a calendar.
       Measured before/after per [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md):
       0 frames while browsing, 1/minute on the current week, 0.00 % CPU.
       Landed before 4b because editing will add more redraw paths.
-- [ ] **4b — editing** — create/edit/delete from the GUI with CLI-parity fields
-      (`*Given` semantics). The daemon stays the only alarm owner; the window
-      may show upcoming alarms.
+- [x] **4b — editing** — create/edit/delete from the GUI with CLI-parity fields.
+      The daemon stays the only alarm owner; the window does not deliver
+      alarms. The writer is `editor_store`; the form is `editor`; the modal is
+      `editor_scene`.
   - [x] **Concurrent-write safety (2026-11-04)** — `events.revision` is a
         compare-and-swap token, `Db::updateEvent` refuses a stale save and
         commits the row plus `meta.modified_utc` in one transaction. Schema
@@ -216,10 +217,18 @@ write paths, so the first GUI cannot corrupt a calendar.
   - [x] **Selection foundation (2026-11-04)** — the scene emits
         `event:<id>` hit targets and paints the selected box; the window
         selects on click and clears with Escape/empty click. No editor yet.
-  - [ ] **Editor** — modal form, CLI-parity fields, text field/textarea,
-        local+UTC time entry, save/delete, error surface, write path.
-  - [ ] **Editor tests** — pure draft semantics, scene overlay, in-memory DB
-        round-trip, stale-save UX.
+  - [x] **Editor (2026-11-04)** — modal form with title, local start/end, type,
+        importance, urgency, alarm offset, hidden and single-line notes;
+        `TextFieldState` + host clipboard; `N` new, `Enter`/second click edit,
+        two-step Delete, `Esc` cancel. Writable DB by default; `--read-only`
+        keeps the viewer contract.
+  - [x] **Editor tests (2026-11-04)** — `editor_test` (form/validation/DST),
+        `editor_scene_test` (ops/hits/focus/buttons/error line),
+        `editor_store_test` (insert, CAS update, stale refusal, delete).
+  - [x] **In-app screenshot (2026-11-04)** — `F12` renders with present
+        disabled, reads the frame back and writes a PNG to
+        `--screenshot-dir`/the app's data directory; verified in Debug and
+        Release, including the modal. The headless fixture tool is unchanged.
 - [ ] **4c — overlay / print** — still post-MVP per `merged.md` §5.4–5.5.
 
 ---
@@ -318,6 +327,20 @@ ctest --test-dir build --output-on-failure      # all pass
 
 Newest first. One line per meaningful change.
 
+- **4b editor + native screenshot (2026-11-04).** Added `gui/src/editor`
+  (pure Event ↔ local fields, validation, DST gaps/repeats), `editor_scene`
+  (modal ops + `field:*`/`editor:*` hits), and `editor_store` (insert / CAS
+  update / delete). The window now opens writable by default, handles text
+  input through `TextFieldState`/the host clipboard, and saves/deletes with an
+  error banner on a stale revision. `F12` captures the live window natively:
+  present is disabled for that frame, `readbackLastFrame` writes a PNG to
+  `--screenshot-dir` or the app's data directory, then present is restored.
+  Week text is dropped under the modal because vk_canvas batches text after
+  shapes. Added `editor_scene_test`/`editor_store_test`; **37/37 suites pass**,
+  demo exits `0`, and a Debug + Release live window created, edited and deleted
+  an event; `F12` produced valid PNGs in both. The CLI/MCP surfaces are
+  unchanged. `GUI.md` §15/§16 and `AGENTS.md` record the traps.
+
 - **4b foundation + roadmap (2026-11-04).** Restored `opencode.jsonc` (the repo
   skill and MCP registration load again), fixed the stale tracker claims, and
   added `ROADMAP.md` as the forward-looking release ladder. Core gained
@@ -327,8 +350,9 @@ Newest first. One line per meaningful change.
   selection highlight; the window selects on click and clears with
   Escape/empty click. The pure edit form (`gui/src/editor`) turns an Event into
   fields and back, validates ranges, and refuses/flags DST wall clocks;
-  `editor_test` pins it. No editor window or write path yet. 35/35 suites pass;
-  the demo still exits `0`. Decisions recorded in `MEMORY.md` §4/§7/§9.
+  `editor_test` pins it. No editor window or write path yet at that checkpoint.
+  35/35 suites passed; the demo still exited `0`. Decisions recorded in
+  `MEMORY.md` §4/§7/§9.
 
 - **GUI performance pass — demand-driven repaint (2026-10-20).** The weekly
   view no longer repaints once a second. `gui/src/refresh.*` is a pure

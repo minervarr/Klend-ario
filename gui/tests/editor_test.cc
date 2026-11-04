@@ -206,6 +206,16 @@ static void testFieldOrder() {
     assert(editorFieldNext(EditorField::Start, true) == EditorField::Title);
     assert(editorFieldNext(EditorField::Cancel, false) == EditorField::Title);
     assert(editorFieldNext(EditorField::Title, true) == EditorField::Cancel);
+
+    EditorField field = EditorField::Cancel;
+    assert(editorFieldFromName("title", field) && field == EditorField::Title);
+    assert(editorFieldFromName("alarm_offset", field) &&
+           field == EditorField::AlarmOffset);
+    assert(!editorFieldFromName("nope", field));
+    assert(editorFieldIsText(EditorField::Title));
+    assert(editorFieldIsText(EditorField::Notes));
+    assert(!editorFieldIsText(EditorField::Hidden));
+    assert(!editorFieldIsText(EditorField::Save));
 }
 
 int main() {

@@ -11,6 +11,7 @@
 // Pure: it sees a WeekModel and UiMetrics, never a font, a Canvas or a GPU.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "scene.hh"
@@ -24,5 +25,15 @@ struct TextInputs {
 };
 
 TextInputs collectTextInputs(const WeekModel &week, const UiMetrics &metrics);
+
+// The edit modal draws labels, field values and an error line at sizes the
+// week does not use. The caller supplies the strings and sizes; this stays
+// free of editor.hh so the pure collector has no core dependency.
+TextInputs collectEditorTextInputs(const std::vector<std::string> &texts,
+                                   const std::vector<int> &sizesPx);
+
+// Union of two collectors, still sorted and unique. Used when the modal is
+// open: the week behind it is still drawn and its title glyphs may be new.
+TextInputs mergeTextInputs(const TextInputs &first, const TextInputs &second);
 
 } // namespace klend_ario::gui

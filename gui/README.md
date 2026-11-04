@@ -24,17 +24,22 @@ one sitting.
 | `src/theme.{hh,cc}` | chrome palette + `UiMetrics` derived from the content rect (no DPI query, no device pixels) |
 | `src/scene.{hh,cc}` | `WeekModel` + `TextMetrics` → `Scene` (draw ops and hit targets) |
 | `src/week_store.{hh,cc}` | `Db` + local week → `WeekModel`, one `EventQuery` |
+| `src/editor.{hh,cc}` | the edit form as pure state: Event ↔ local-time fields, validation, DST flags |
+| `src/editor_scene.{hh,cc}` | the modal's draw ops and `field:*` / `editor:*` hit targets |
+| `src/editor_store.{hh,cc}` | the form → `Db::insertEvent` / CAS `updateEvent` / delete bridge |
 | `src/text_inputs.{hh,cc}` | the codepoint/size set the glyph cache must bake before measuring |
 | `src/scene_render.{hh,cc}` | `Scene` → `Canvas`; `FontTextMetrics`; descent clip |
-| `src/week_view.{hh,cc}` | `AppView`: window, `RasterFont`, read-only DB, keys, clicks, 1 s poll |
-| `src/gui_main.cc` | `app_shell_main`: `--db`, `--key-file`, `--hidden` |
-| `tools/capture_main.cc` | headless PNG scenarios (dev tooling) |
+| `src/week_view.{hh,cc}` | `AppView`: window, `RasterFont`, writable DB, editor input, 1 s poll, F12 capture |
+| `src/gui_main.cc` | `app_shell_main`: `--db`, `--key-file`, `--hidden`, `--read-only`, `--screenshot-dir` |
+| `tools/capture_main.cc` | headless fixture PNG scenarios (dev tooling) |
 
 ## Build
 
-The pure half (`klend_ario_view` + its four suites) always builds. The window
-and the capture tool need the Vulkan SDK, the Slang compiler and the Wayland/xkb
-development packages, so they are behind one option:
+The pure half (`klend_ario_view` + its suites: geometry, local time, theme,
+scene, week store, text inputs, refresh, editor, editor scene, editor store)
+always builds. The window and the capture tool need the Vulkan SDK, the Slang
+compiler and the Wayland/xkb development packages, so they are behind one
+option:
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DKLEND_BUILD_GUI=ON
@@ -55,18 +60,28 @@ because `FileAssetReader` looks next to the executable.
 ```
 
 Keys: `Left`/`Right` previous/next week · `T` today · `H` toggle hidden blocks
-(sleep) · `Esc` quit. The header buttons do the same with the mouse.
+(sleep) · `N` new · `Enter` edit selected · `Esc` cancel/close or quit ·
+`F12` screenshot. The header buttons do the same with the mouse. Click an event
+once to select it, again (or `Enter`) to open the form; Delete asks twice.
 
-It is **read-only** in this slice: the CLI and the MCP server are the write
-paths, and a viewer cannot corrupt the calendar. It still *shows* their writes —
-`Db::dataVersion()` is polled once a second, so an edit committed by another
-process appears in an open window without a socket or a file watcher.
+It is **writable by default** (Phase 4b): the form saves through
+`editor_store` → `Db::insertEvent` / `Db::updateEvent`, the latter a revision
+compare-and-swap. `--read-only` keeps the old viewer contract, including
+"the database must already exist". External writes still appear within a
+second through `Db::dataVersion()`; a stale save is refused, not applied.
 
-## Screenshots without a display
+`F12` writes a PNG of the current window, editor included, to the app's data
+directory (`~/.local/share/klend_ario` by default) or `--screenshot-dir`.
+It renders the frame with present disabled, reads it back, then presents on the
+next pass — presenting first lets the compositor recycle the image.
 
-`klend_ario_capture` renders fixture weeks through `VK_EXT_headless_surface` and
-writes PNGs — no window, no compositor, deterministic (the tool pins `TZ=UTC0`,
-so the clock labels are stable):
+## Screenshots
+
+`F12` in the running app is the live path. The separate tool remains for
+fixtures and for machines with no display: `klend_ario_capture` renders fixture
+weeks through `VK_EXT_headless_surface` and writes PNGs — no window, no
+compositor, deterministic (the tool pins `TZ=UTC0`, so the clock labels are
+stable):
 
 ```bash
 cd build/gui
@@ -75,8 +90,9 @@ cd build/gui
 ./klend_ario_capture --list                    # scenario paths
 ```
 
-Scenarios: an empty week, a mixed week, sleep visible vs hidden, and overlap
-density (two to four concurrent events plus one crossing midnight).
+Scenarios: an empty week, a mixed week, sleep visible vs hidden, overlap
+density (two to four concurrent events plus one crossing midnight), and the
+editor in edit/new state.
 
 ## Text
 
@@ -114,3 +130,18 @@ cut. The full rationale, traps and capture checks are in
 - **Colours live in core.** `styleFor` (hue/border) and `rgbForStyle` +
   `textColorOn` (pixels) are core functions so the screen and any future print
   agree. The GUI owns only chrome.
+- **Text is a separate renderer layer.** Every text op is batched after every
+  shape, regardless of issue order. When the modal is open the week's text ops
+  are dropped, or day headers paint over the panel fill. The modal's own text is
+  then the only text, on top of the dim/panel shapes.
+- **A save is compare-and-swap.** `editor_store` sends the `Event.revision` the
+  form was opened with; a stale draft gets an error banner, not an overwrite.
+- **Local time is resolved, not parsed.** `localTimeToUtc` flags a
+  spring-forward gap and a fall-back repetition; an unchanged ambiguous field
+  keeps its original instant. `editor_test` pins all three cases.
+- **A screenshot must not present first.** `F12` renders with present disabled,
+  reads the image back, then re-enables present on the next frame. Reading a
+  presented image can copy recycled memory.
+- **Notes is single-line in the 4b form.** The storage model allows newlines and
+  the CLI/MCP do; the first GUI editor does not grow the box. Multiline is later
+  work, not a hidden data change.

@@ -10,7 +10,9 @@ namespace {
 const char *kDayLetters[7] = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"};
 const char *kEllipsis = "\xE2\x80\xA6"; // …
 
-Op fillOp(const Rect &rect, Color color, int radius = 0) {
+} // namespace
+
+Op fillOp(const Rect &rect, Color color, int radius) {
     Op op;
     op.kind = OpKind::Fill;
     op.rect = rect;
@@ -19,7 +21,7 @@ Op fillOp(const Rect &rect, Color color, int radius = 0) {
     return op;
 }
 
-Op strokeOp(const Rect &rect, Color color, int thickness, int radius = 0) {
+Op strokeOp(const Rect &rect, Color color, int thickness, int radius) {
     Op op;
     op.kind = OpKind::Stroke;
     op.rect = rect;
@@ -29,8 +31,7 @@ Op strokeOp(const Rect &rect, Color color, int thickness, int radius = 0) {
     return op;
 }
 
-Op textOp(const Rect &rect, std::string text, int size, Color color,
-          Align align = Align::Left) {
+Op textOp(const Rect &rect, std::string text, int size, Color color, Align align) {
     Op op;
     op.kind = OpKind::Text;
     op.rect = rect;
@@ -91,8 +92,6 @@ std::string fitText(std::string_view text, int size, int maxWidth, const TextMet
     }
     return {};
 }
-
-} // namespace
 
 Scene buildWeekScene(int width, int height, const WeekModel &week, long long nowUtc,
                      const TextMetrics &text, const Theme &theme, int minTextPx,

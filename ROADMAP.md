@@ -1,7 +1,7 @@
 # ROADMAP — what is left to finish
 
 **Status:** 2026-11-04
-**Baseline:** 35/35 CTest suites pass; `demo/klend_ario_demo.py` exits `0`;
+**Baseline:** 37/37 CTest suites pass; `demo/klend_ario_demo.py` exits `0`;
 the weekly view builds, runs and captures headlessly.
 **Relationship to `PLAN.md`:** this file is the forward-looking finish line.
 [`essentialAgent/PLAN.md`](essentialAgent/PLAN.md) remains the detailed phase
@@ -20,6 +20,7 @@ live in the weekly view:
   the CLI and MCP writers;
 - alarms fire on time with a notification **and sound**, from a daemon that
   starts at login, with no duplicate triggers;
+- the app captures its own window with `F12` in Debug and Release;
 - local time is shown with UTC still visible; DST days are 23/25 hours;
 - the install is user-local (no root), appears in the desktop menu, and ships
   the daemon unit, completion, fonts, shaders and icon;
@@ -59,17 +60,19 @@ decision first; otherwise the feature lives in the GUI or in existing fields.
 - Phase 6: alarm core + daemon, libnotify, log fallback (sound still open).
 - Phase 4a: weekly view, pure scene/layout, DST-aware local days, RasterFont,
   demand-driven repaint, headless capture.
-- 4b foundation (2026-11-04): `events.revision` compare-and-swap, schema v2
-  migration, local-time inverse with DST flags, `event:<id>` scene hit targets
-  and selection.
+- 4b (2026-11-04): modal editor, text input, writable DB with revision CAS,
+  local-time inverse with DST flags, `event:<id>` scene hit targets and
+  selection. Create/edit/delete verified in a live Debug and Release window.
+- `F12` captures the live window natively in Debug and Release, including the
+  modal; the headless fixture tool is unchanged.
 - `opencode.jsonc` restored; the repo skill and MCP server load from the
   checkout.
-- 35 suites, including the seven `pe-holiday-calc` child suites.
+- 37 suites, including the seven `pe-holiday-calc` child suites.
 - Demo: 21 CLI verbs, five MCP tools, one alarm trigger, encrypted DB checks.
 
 ### Not done
 
-- 4b editor UI and its write path; 4c overlay/print.
+- 4c overlay/print.
 - PipeWire sound (the named Phase 6 gap); daemon autostart/single-instance.
 - Key UX: no passphrase prompt; no first-run encrypted setup; encryption is
   opt-in via file/env despite the recorded "encrypted by default" decision.
@@ -111,52 +114,62 @@ be a first-class writer without becoming a second source of truth.
       `ambiguous`/`nonexistent`; `local_time_test` pins Lima, Berlin
       spring/fall and UTC.
 
-### 4.2 Editable scene — started
+### 4.2 Editable scene — done
 
 - [x] **Event hit targets.** The scene emits `event:<id>` targets and paints
       the selected box; `scene_test` asserts the geometry, the Alarm-row skip
       and the selection stroke.
-- [ ] **Editor chrome.** Modal panel draw ops, field boxes, focus ring,
-      buttons; all decisions in `scene`, none in the renderer.
-- [ ] **Selection navigation.** Keyboard next/previous, double-click/Enter to
-      edit, `N` or click-empty to create, `Delete` with confirmation.
+- [x] **Editor chrome.** Modal panel draw ops, field boxes, focus ring, toggle,
+      buttons and status line; `editor_scene_test` asserts the ids and focus.
+- [x] **Selection navigation.** Click selects; second click/Enter edits; `N`
+      creates; `Delete` asks twice. Week navigation is disabled while the
+      modal is open.
+- [ ] **Create at the clicked slot.** `N` starts at the current instant, not
+      the empty slot under the pointer. Later refinement, not a blocker.
 
 ### 4.3 Editor UI
 
 - [x] **Pure form state.** `gui/src/editor` turns an Event into local-time
       fields and back, validates every field, and refuses/flags DST wall
       clocks. `editor_test` pins the round-trip and the invalid cases.
-- [ ] Fields: title, start/end (or duration), type, importance, urgency, alarm
-      offset, hidden, notes. Reuse vk_canvas `TextFieldState` / `textarea` and
-      the host clipboard seam; do not invent a text engine.
-- [ ] Defaults: clicked slot → start there, 1-hour duration; new-event title
-      focused; `Esc` cancels; dirty-state warning.
-- [ ] Time input: local wall clock plus the UTC value; a nonexistent DST time
-      is refused; an ambiguous one says which occurrence it chose.
-- [ ] Error surface: stale edit, constraint failure, wrong key, read-only file.
-- [ ] **Not in 4b:** drag-to-move/resize, recurrence, multi-select. Record them
-      as later work if wanted.
+- [x] Fields: title, start/end, type, importance, urgency, alarm offset,
+      hidden, notes (single-line in v1). Reuses `TextFieldState` and the host
+      clipboard; no second text engine.
+- [x] Defaults: new event starts now, one hour; title focused; `Esc` cancels.
+      Dirty-state warning is not implemented; `Esc` discards without asking.
+- [ ] Time input: the form shows local wall clock only, not UTC alongside it.
+      A nonexistent DST time is refused; an ambiguous one requires a second
+      Save and names the earlier occurrence.
+- [x] Error surface: stale edit, constraint failure, wrong key at open,
+      read-only deployment.
+- [x] **Not in 4b:** drag-to-move/resize, recurrence, multi-select, multiline
+      notes. Recorded as later work.
 
 ### 4.4 Write path and refresh
 
-- [ ] Open writable (`Db::open` / `openEncrypted`) only when editing is enabled;
-      keep the read-only mode for a viewer deployment.
-- [ ] Save → reload the week → arm one frame. Do not reintroduce a per-second
-      repaint.
-- [ ] External change while the editor is open: detect `dataVersion`, warn, and
-      let the optimistic save decide. Do not silently merge.
+- [x] Open writable (`Db::open` / `openEncrypted`) by default; `--read-only`
+      keeps `openReadOnly`/`openEncryptedReadOnly` and the must-exist rule.
+- [x] Save → reload the week → arm one frame. The editor closes on success.
+- [x] External change while the editor is open: `dataVersion` reload shows a
+      warning; the save carries the original revision and is refused if stale.
 - [ ] Measure the edit path (frames, save time, re-bake) per
-      `GUI_PERFORMANCE.md`; record before/after.
+      `GUI_PERFORMANCE.md`; record before/after. The screenshot path does not
+      affect the idle repaint policy.
+- [x] **In-app screenshot** — `F12` renders with present disabled, reads the
+      frame back, writes PNG to `--screenshot-dir`/the app's data directory,
+      then re-enables present. Works in Debug and Release, modal included.
 
 ### 4.5 Alarms in the window
 
-- [ ] The daemon is the only alarm owner (recorded D2). The GUI may show
-      upcoming alarms but does not fire its own.
-- [ ] Wire the selected event's alarm offset into the editor and the scene.
+- [x] The daemon is the only alarm owner (recorded D2). The GUI does not fire
+      its own.
+- [x] The selected event's alarm offset is an editable field.
+- [ ] Display the next upcoming alarm in the window. Optional; the daemon is
+      the delivery path.
 
 **Done when:** create/edit/delete survive restart; the CLI and MCP see the
 changes; a stale save is rejected; `ctest` and the demo stay green; captures are
-unchanged or deliberately updated; the edit path is measured.
+updated; the edit path is measured (still open).
 
 ---
 
@@ -438,10 +451,9 @@ Source: R4; open question 6.
 
 ## 17. Next actions
 
-1. Build the modal editor chrome in the scene (field boxes, focus ring, buttons)
-   with `scene_test`.
-2. Add the editor controller: draft state, local/UTC validation, save/delete,
-   stale-save error, in-memory DB tests.
-3. Open the database writable only when editing; save → reload → one frame.
-4. Measure the edit path and update the capture scenarios.
-5. Then Milestone 2 (sound/autostart) and Milestone 3 (keys).
+1. Show UTC next to the editor's local start/end (R8).
+2. Measure the edit path (frame count, save time, re-bake) and record it.
+3. Milestone 2: PipeWire sound, daemon single-instance/autostart.
+4. Milestone 3: encrypted-by-default first run and key prompts.
+5. Milestone 4: install rules, desktop entry, systemd unit.
+6. Then the 1.1 sleep scheduler.

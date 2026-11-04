@@ -13,6 +13,7 @@
 //   ./klend_ario_capture --frame 1280x720       # the full-bleed layout
 //   ./klend_ario_capture --out /tmp/shots --list
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +25,7 @@
 #include "asset_reader.hh"
 #include "canvas.hh"
 #include "capture.hh"
+#include "editor_scene.hh"
 #include "headless.hh"
 #include "raster_font.hh"
 #include "renderer.hh"
@@ -80,6 +82,8 @@ struct Fixture {
     std::string path;
     WeekModel week;
     long long nowUtc = 0;
+    bool showEditor = false;
+    EditorState editor;
 };
 
 std::vector<Fixture> fixtures() {
@@ -137,6 +141,29 @@ std::vector<Fixture> fixtures() {
         out.push_back({"40-density/00-overlaps", week, at(3, 12)});
     }
 
+    // 5. The edit modal over the week. The warning is the DST-advisory line,
+    //    so the capture proves the status row and the focus ring are visible.
+    {
+        WeekModel week = makeWeek();
+        week.events = {
+            event("Deep work", at(0, 9), at(0, 12), 80, 20),
+            event("Lunch", at(0, 12), at(0, 13), 10, 10),
+        };
+        EditorState editor = editorForEvent(week.events[0]);
+        editor.focus = EditorField::Title;
+        editor.warning = "start is ambiguous; using the earlier occurrence";
+        out.push_back({"50-editor/00-edit", week, at(6, 16), true, editor});
+    }
+
+    // 6. A new event's empty form: the placeholder text and the Save/Cancel
+    //    pair (no Delete) are the differences from the edit form.
+    {
+        WeekModel week = makeWeek();
+        EditorState editor = editorForNew(at(6, 16));
+        editor.focus = EditorField::Title;
+        out.push_back({"51-editor/00-new", week, at(6, 16), true, editor});
+    }
+
     return out;
 }
 
@@ -150,7 +177,20 @@ std::vector<vkc::Scenario> makeScenarios(RasterFont &font, int minTextPx) {
             const int height = static_cast<int>(renderer.height());
             const gui::UiMetrics metrics =
                 gui::metricsFor(gui::frameFor(width, height).content, minTextPx);
-            const TextInputs inputs = collectTextInputs(fixture.week, metrics);
+            TextInputs inputs = collectTextInputs(fixture.week, metrics);
+            if (fixture.showEditor) {
+                const std::vector<std::string> texts = {
+                    fixture.editor.title, fixture.editor.start, fixture.editor.end,
+                    fixture.editor.type, fixture.editor.importance,
+                    fixture.editor.urgency, fixture.editor.alarmOffset,
+                    fixture.editor.notes, fixture.editor.error, fixture.editor.warning};
+                const std::vector<int> sizes = {
+                    metrics.editorTitleSize, metrics.editorLabelSize,
+                    metrics.editorFieldSize, metrics.editorButtonSize,
+                    metrics.editorErrorSize};
+                inputs = mergeTextInputs(
+                    inputs, collectEditorTextInputs(texts, sizes));
+            }
 
             // Bake before measuring: RasterFont::textWidth() reads the baked
             // cells, and a missing size would make every title look like it fits.
@@ -160,9 +200,21 @@ std::vector<vkc::Scenario> makeScenarios(RasterFont &font, int minTextPx) {
             }
 
             const FontTextMetrics measure(&font);
-            const Scene scene =
-                buildWeekScene(width, height, fixture.week, fixture.nowUtc, measure,
-                               defaultTheme(), minTextPx);
+            Scene scene = buildWeekScene(width, height, fixture.week, fixture.nowUtc, measure,
+                                         defaultTheme(), minTextPx);
+            if (fixture.showEditor) {
+                // Text is a separate renderer layer and always draws after
+                // shapes; without this the week headers bleed through the modal
+                // panel. Shapes stay for context.
+                scene.ops.erase(
+                    std::remove_if(scene.ops.begin(), scene.ops.end(),
+                                   [](const Op &op) { return op.kind == OpKind::Text; }),
+                    scene.ops.end());
+                Scene modal = buildEditorScene(width, height, fixture.editor, measure,
+                                               defaultTheme(), minTextPx);
+                scene.ops.insert(scene.ops.end(), modal.ops.begin(), modal.ops.end());
+                scene.hits.insert(scene.hits.end(), modal.hits.begin(), modal.hits.end());
+            }
 
             std::vector<float> curves;
             std::vector<float> shapes;

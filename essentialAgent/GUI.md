@@ -12,9 +12,10 @@ needed when you touch the GUI, not when you touch `core/` or the CLI.
 ## 1. Status
 
 Phase 4a (2026-10-17): the read-only weekly view exists — window, scene,
-headless capture. Phase 4b (next) adds editing. Until then the GUI opens the
-database with `Db::openReadOnly`/`openEncryptedReadOnly`; the CLI and the MCP
-server are the write paths.
+headless capture. Phase 4b (2026-11-04): the modal editor, revision-checked
+writes, and an in-app `F12` screenshot. The GUI now opens writable by default;
+`--read-only` keeps the viewer contract (`Db::openReadOnly` /
+`openEncryptedReadOnly`, and the file must exist).
 
 The pure half (`klend_ario_view` and its suites) always builds. The window and
 the capture tool need `-DKLEND_BUILD_GUI=ON`, the Vulkan SDK, `slangc` and the
@@ -216,9 +217,14 @@ and "today"/"Sep" (`y`/`p`) after any clip change.
 
 ## 9. Database and refresh
 
-- Read-only: `Db::openReadOnly` / `openEncryptedReadOnly`. The file must already
-  exist; opening with create/migrate would turn a wrong path into a silent empty
-  week. The error names the path and tells the user how to create a calendar.
+- Writable by default: `Db::open` / `Db::openEncrypted` create and migrate; the
+  default path is under the app's state directory (and only app-owned
+  directories are created). `--read-only` uses `Db::openReadOnly` /
+  `openEncryptedReadOnly`, and the file must already exist — that is the viewer
+  contract, where a wrong path must not become a silent empty week.
+- Saves are compare-and-swap. The form carries the `Event.revision` it was
+  opened with; `Db::updateEvent` refuses a stale value. An external CLI/MCP
+  write is not silently merged or overwritten.
 - Hidden rows are a query choice (`Visibility::Any` with `--hidden`); the scene
   draws what it is given. `EventType::Alarm` is a reminder, not a block.
 - `Db::dataVersion()` is polled once a second; a commit by another process (CLI
@@ -234,8 +240,8 @@ and "today"/"Sep" (`y`/`p`) after any clip change.
   [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md) §2 for the table and §6 for the
   acceptance evidence.
 - Sync conflict copies are reported on startup, never merged (`MEMORY.md` §7).
-- No write path until 4b. Do not add one without deciding the edit surface
-  (CLI-parity fields, `*Given` semantics).
+- The write path is `editor_store`, not ad-hoc SQL in the window. It is the
+  same `insertEvent`/`updateEvent`/`removeEvent` core path the CLI and MCP use.
 
 ## 10. The scene contract
 
@@ -295,7 +301,13 @@ Shaders and `fonts/ui/` are copied beside the executable; `FileAssetReader`
 looks there.
 
 Keys: `Left`/`Right` previous/next week, `T` today, `H` toggle hidden blocks,
-`Esc` quit. Header buttons do the same with the mouse.
+`N` new, `Enter` edit selected, `Esc` cancel/close or quit, `F12` screenshot.
+Header buttons do the same with the mouse. A second click on a selected event
+(or `Enter`) opens the form.
+
+`F12` reads the current frame back to the app's data directory (or
+`--screenshot-dir`). It works in Release and includes the modal when one is
+open.
 
 ## 13. File map
 
@@ -307,9 +319,12 @@ Keys: `Left`/`Right` previous/next week, `T` today, `H` toggle hidden blocks,
 | `src/scene.{hh,cc}` | `WeekModel` + `TextMetrics` → draw ops and hit targets |
 | `src/text_inputs.{hh,cc}` | the codepoint/size set the glyph cache must bake (pure) |
 | `src/week_store.{hh,cc}` | `Db` + local week → `WeekModel`, one `EventQuery` |
+| `src/editor.{hh,cc}` | pure form state: Event ↔ local fields, validation, DST resolution |
+| `src/editor_scene.{hh,cc}` | the modal's draw ops and `field:*` / `editor:*` hits |
+| `src/editor_store.{hh,cc}` | form → insert / CAS update / delete bridge |
 | `src/scene_render.{hh,cc}` | `Scene` → `Canvas`; `FontTextMetrics`; descent clip |
-| `src/week_view.{hh,cc}` | `AppView`: window, RasterFont, read-only DB, input, 1 s poll |
-| `src/gui_main.cc` | `app_shell_main`: `--db`, `--key-file`, `--hidden` |
+| `src/week_view.{hh,cc}` | `AppView`: window, RasterFont, writable DB, editor input, F12 capture |
+| `src/gui_main.cc` | `app_shell_main`: `--db`, `--key-file`, `--hidden`, `--read-only`, `--screenshot-dir` |
 | `tools/capture_main.cc` | headless PNG scenarios (Debug-only) |
 | `tests/*` | pure geometry/scene/store/input tests; no GPU |
 
@@ -332,10 +347,35 @@ Keys: `Left`/`Right` previous/next week, `T` today, `H` toggle hidden blocks,
 - `dayDateSize` is reserved; add it to `text_inputs` with its first text op.
 - The pure `klend_ario_view` must not include `app_shell/ui_metrics.hh`; pass the
   font floor in.
+- **Text is a separate renderer layer.** All text ops draw after all shape ops,
+  regardless of issue order. When the modal is open, the week's text ops are
+  removed or the day headers appear over the panel fill. Shapes stay for
+  context; the modal owns the text layer.
+- **A screenshot must not present first.** `F12` disables present for that
+  frame, draws, calls `readbackLastFrame`, then re-enables present and arms one
+  redraw. Reading a presented image can copy recycled swapchain memory.
+- **The form's local time is resolved, not parsed.** `localTimeToUtc` reports a
+  spring-forward gap and a fall-back repetition. An unchanged ambiguous field
+  keeps the instant it was opened with; re-parsing the text would move it an
+  hour on an unrelated edit.
+- **Notes is single-line in the first form.** The model/CLI/MCP allow newlines;
+  the 4b editor does not grow the box. That is a known limitation, not a
+  storage change.
 - Never edit the framework submodules from this repository. A change there is
   made, tested and pushed in the child, then the parent pin advances.
 
 ## 15. Decision log
+
+- **2026-11-04 — Phase 4b: editable view + native screenshot.** The pure form
+  (`editor`) converts an Event to local fields and back, validates every field,
+  and resolves DST gaps/repeats; `editor_scene` owns the modal's ops and hits;
+  `editor_store` is the only write bridge and uses the revision CAS. The window
+  owns focus, `TextFieldState`/clipboard input and the error banner. `F12` draws
+  with present disabled, reads the frame back, and re-enables present on the
+  next pass. The modal's own scene is appended after the week's shapes with the
+  week text removed, because text batches after shapes. Verified by
+  `editor_test`, `editor_scene_test`, `editor_store_test`, a Debug and Release
+  live window (create/edit/delete) and `F12` PNGs from both.
 
 - **2026-10-20 — demand-driven repaint, device picking, windowed mode
   (GUI_PERFORMANCE.md A–C).** The 1 s timer became a poll: `gui/src/refresh.*`
@@ -363,3 +403,31 @@ Keys: `Left`/`Right` previous/next week, `T` today, `H` toggle hidden blocks,
   per-font readable floor (`kMinReadableTextSizePx`) passed into the scene.
   Verified with 1920x1080 and 1280x720 captures (hundreds of edge colours, no
   clipped `p` tails) and a live 1200x700 window.
+
+## 16. Editing and screenshots (Phase 4b)
+
+```
+selected event -> editorForEvent() -> EditorState (local strings)
+                                      |
+                              buildEditorScene() -> modal ops + field:* hits
+                                      |
+                       TextFieldState + FrameInput -> editor fields
+                                      |
+                       buildEventFromEditor() -> Event (local -> UTC)
+                                      |
+                       editor_store -> Db::insertEvent / CAS updateEvent
+```
+
+- A **new** event starts at the current instant with a 1-hour end; the clicked
+  slot is not used yet. `N` opens it, `Enter` saves, `Esc` cancels.
+- **Delete** is a two-step action: the first click/Enter sets `confirmDelete`,
+  the second removes the row. Editing a field clears the acknowledgement.
+- **DST ambiguity** requires a second Save; the warning names the earlier
+  occurrence. A nonexistent spring-forward time is refused.
+- **External change:** the timer still polls `Db::dataVersion()` and reloads the
+  week. The open draft is not clobbered; it shows a warning and the CAS decides
+  at Save.
+- **Screenshot:** `F12` sets the request; `drawFrame` disables present, draws,
+  reads back RGBA, writes PNG, re-enables present and arms one redraw. The file
+  goes to `--screenshot-dir` or the app's data directory. The dev capture tool
+  is unchanged and still uses the headless surface for fixture scenarios.

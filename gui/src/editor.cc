@@ -11,9 +11,9 @@
 namespace klend_ario::gui {
 namespace {
 
-const char *kFields[] = {"title",  "start", "end",   "type",       "importance",
-                         "urgency", "alarm", "hidden", "notes",     "save",
-                         "delete", "cancel"};
+const char *kFields[] = {"title",   "start",  "end",    "type",   "importance",
+                         "urgency", "alarm_offset", "hidden", "notes", "save",
+                         "delete",  "cancel"};
 
 int daysInMonth(int year, int month) {
     static const int kDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -100,6 +100,38 @@ const char *editorFieldName(EditorField field) {
         return kFields[index];
     }
     return "";
+}
+
+bool editorFieldFromName(std::string_view name, EditorField &out) {
+    for (int i = 0; i < static_cast<int>(EditorField::Count); ++i) {
+        const EditorField field = static_cast<EditorField>(i);
+        if (name == editorFieldName(field)) {
+            out = field;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool editorFieldIsText(EditorField field) {
+    switch (field) {
+    case EditorField::Title:
+    case EditorField::Start:
+    case EditorField::End:
+    case EditorField::Type:
+    case EditorField::Importance:
+    case EditorField::Urgency:
+    case EditorField::AlarmOffset:
+    case EditorField::Notes:
+        return true;
+    case EditorField::Hidden:
+    case EditorField::Save:
+    case EditorField::Delete:
+    case EditorField::Cancel:
+    case EditorField::Count:
+        return false;
+    }
+    return false;
 }
 
 EditorField editorFieldNext(EditorField field, bool backward) {

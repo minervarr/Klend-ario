@@ -32,7 +32,7 @@ Klend-ario/
 ├── mcp/                          # the local MCP server (links core)
 ├── alarm/                        # the alarm engine (links core)
 ├── android/                      # later: JNI + gradle (see MEMORY §5)
-├── gui/                          # later: vk_canvas + app_shell
+├── gui/                          # weekly view + editor: vk_canvas + app_shell
 ├── assets/fonts/                 # submodule
 ├── scripts/                      # stdlib-only Python zipapp build tool
 └── demo/                         # permanent showcase; consumes built binaries
@@ -215,10 +215,23 @@ Release builds exist but are not the dev loop; tests are **Debug-only**.
 - **A local day is `[startUtc, endUtc)`.** The columns are local days and a DST
   day is 23 or 25 hours; never assume 86,400 s when drawing. `gui/src/local_time`
   is the only place a timezone is read.
-- **The GUI is read-only until 4b.** It opens with `Db::openReadOnly`/
-  `openEncryptedReadOnly` and notices other processes through
-  `Db::dataVersion()`, polled once a second. Do not add a write path without
-  deciding the edit surface (CLI-parity fields, `*Given` semantics).
+- **The GUI edits through `editor_store`.** It opens writable by default
+  (`Db::open`/`openEncrypted`); `--read-only` keeps the old
+  `openReadOnly`/`openEncryptedReadOnly` viewer contract. The modal's form is
+  `editor` (pure), its draw ops/hits are `editor_scene`, and the only write
+  bridge is `editor_store` → `Db::insertEvent`/`updateEvent`/`removeEvent`.
+  Do not add a second write path, and do not bypass the revision CAS. It still
+  notices other processes through `Db::dataVersion()`, polled once a second.
+- **The modal owns the text layer.** vk_canvas batches every text op after every
+  shape, so week text must be removed while the modal is open or day headers
+  paint over the panel. The modal scene is appended after the week's shapes.
+- **A local time input is resolved, not parsed.** `localTimeToUtc` reports a
+  spring-forward gap and a fall-back repetition. An unchanged ambiguous field
+  keeps the instant it was opened with; do not re-parse it on an unrelated edit.
+- **`F12` is the in-app screenshot.** Render with present disabled, read the
+  frame back, write the PNG to `--screenshot-dir`/the app's data directory, then
+  re-enable present and arm one redraw. Never read back a presented image: the
+  compositor may have recycled it. Do not write into the user's Pictures.
 - **Repaint is a decision, not a tick.** Before changing the window loop, read
   [`GUI_PERFORMANCE.md`](GUI_PERFORMANCE.md): the 1 s timer is meant to poll,
   and a frame is meant to be armed only when something visible changed. Any
@@ -239,7 +252,10 @@ A change is done when:
    `PLAN.md` are updated in the same change.
 6. If it changes a CLI verb, flag, or output shape, `demo/klend_ario_demo.py`
    still exits `0` — it is the end-to-end showcase.
-7. It is committed with `./git_wrapper` (below).
+7. A GUI change passes a headless capture review; a change to the window,
+   editor or screenshot path is also checked in the live Debug/Release app
+   (`F12` for the capture itself).
+8. It is committed with `./git_wrapper` (below).
 
 ## 6. Git
 

@@ -20,6 +20,8 @@ add_library(klend_ario_view STATIC
     src/week_layout.cc
     src/local_time.cc
     src/editor.cc
+    src/editor_store.cc
+    src/editor_scene.cc
     src/theme.cc
     src/scene.cc
     src/week_store.cc
@@ -53,6 +55,23 @@ klend_ario_add_test(local_time_test
 # DST cases the editor must refuse or flag. No window, no database, no GPU.
 klend_ario_add_test(editor_test
     SOURCES  tests/editor_test.cc src/editor.cc src/local_time.cc
+             ${CMAKE_SOURCE_DIR}/core/src/event.cc
+    INCLUDES src ${CMAKE_SOURCE_DIR}/core/include
+    LIBS     arc_util)
+
+# The form against the real storage layer: insert, compare-and-swap update,
+# stale-save refusal, delete. In-memory DB, pinned TZ, no window.
+klend_ario_add_test(editor_store_test
+    SOURCES  tests/editor_store_test.cc src/editor_store.cc src/editor.cc
+             src/local_time.cc
+    INCLUDES src ${CMAKE_SOURCE_DIR}/core/include
+    LIBS     klend_ario_core arc_util)
+
+# The modal's draw ops and hit targets: field boxes, focus ring, toggle,
+# buttons, error/warning line. Pure; no window and no font.
+klend_ario_add_test(editor_scene_test
+    SOURCES  tests/editor_scene_test.cc src/editor_scene.cc src/editor.cc
+             src/local_time.cc src/scene.cc src/theme.cc src/week_layout.cc
              ${CMAKE_SOURCE_DIR}/core/src/event.cc
     INCLUDES src ${CMAKE_SOURCE_DIR}/core/include
     LIBS     arc_util)
@@ -171,6 +190,7 @@ if(KLEND_BUILD_GUI)
         app_shell
         app_shell_wayland
         vk_canvas_core
+        vk_canvas_capture # stbi_write_png for the in-app F12 screenshot
         vk_canvas_wayland)
 
     target_compile_definitions(klend_ario_gui PRIVATE KLEND_ARIO_VERSION="${PROJECT_VERSION}")

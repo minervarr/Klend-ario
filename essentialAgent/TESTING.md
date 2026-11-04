@@ -87,10 +87,13 @@ This mirrors the convention already used by `archive_engine` (`paths_test`,
 | Week geometry, DST-length days, overlap clusters | `gui/tests/week_layout_test.cc` | `src/week_layout.cc` | none |
 | Local civil days (Lima, Berlin 23/25 h) and the local-time inverse | `gui/tests/local_time_test.cc` | `src/local_time.cc` | pinned `TZ`, no network |
 | Edit form state (Event ↔ fields, validation, DST refusal) | `gui/tests/editor_test.cc` | `src/editor.cc src/local_time.cc` + core `event.cc` | pinned `TZ`, no DB |
+| Modal draw ops/hits (fields, focus, buttons, error line) | `gui/tests/editor_scene_test.cc` | `src/editor_scene.cc src/editor.cc src/scene.cc src/theme.cc src/week_layout.cc src/local_time.cc` + core `event.cc` | none; fake `TextMetrics` |
+| Form → storage (insert, CAS update, stale refusal, delete) | `gui/tests/editor_store_test.cc` | `src/editor_store.cc src/editor.cc src/local_time.cc` + `klend_ario_core` | in-memory DB, pinned `TZ` |
 | Chrome metrics + palette | `gui/tests/theme_test.cc` | `src/theme.cc src/week_layout.cc` | none |
 | The weekly view's draw ops (colours, labels, borders, tail, now-line) | `gui/tests/scene_test.cc` | `src/scene.cc src/theme.cc src/week_layout.cc src/local_time.cc` + `core/src/event.cc` | none; fake `TextMetrics` |
 | DB → week model (one query, label, holidays) | `gui/tests/week_store_test.cc` | `src/week_store.cc` + core sources | in-memory DB, pinned `TZ` |
-| Headless view screenshots | `gui/tools/capture_main.cc` | the built binary | fixture weeks; **not** CTest |
+| Headless view screenshots | `gui/tools/capture_main.cc` | the built binary | fixture weeks/editor; **not** CTest |
+| In-app live screenshot (`F12`) | `gui/src/week_view.cc` | the built binary | live window; **manual**, Debug + Release |
 | MCP JSON parser/serializer | `mcp/tests/json_test.cc` | `mcp/src/json.cc` | none |
 | MCP JSON-RPC dispatch + five tools | `mcp/tests/server_test.cc` | `mcp/src/json.cc mcp/src/server.cc` + core | in-memory DB |
 | MCP end-to-end (real stdio) | `demo/mcp_smoke.py` | the built binary | throwaway temp DB; **not** CTest |
@@ -133,7 +136,24 @@ event defaults to one hour; empty title, bad instants, reversed ranges, bad
 importance/urgency, bad type and a non-integer alarm offset are rejected;
 February 30 is rejected before `mktime` can normalise it; a spring-forward wall
 clock is refused and a fall-back one saves with a warning naming the earlier
-occurrence.
+occurrence. An unchanged ambiguous field keeps the instant it was opened with.
+
+`editor_scene_test` asserts the modal without a GPU: every field/hit id exists,
+the new form has Save/Cancel but no Delete, the edit form adds Delete and a
+confirmation prompt, the focus ring and hidden toggle use the selection colour,
+and error/warning text is visible in the right colour.
+
+`editor_store_test` drives the real storage path over an in-memory DB: insert a
+form, edit it (revision +1), refuse the same stale draft after the committed
+edit, delete the row, and refuse to delete a new form. It also proves a DST
+warning reaches the caller without being swallowed.
+
+### Native screenshot
+
+`F12` is a GPU/window path, not a CTest suite. It was checked by hand in Debug
+and Release: the PNG opens, has the window's dimensions, shows the week, and
+shows the modal when one is open. The separate `klend_ario_capture` fixture tool
+remains the deterministic visual gate.
 
 ### CLI time expressions
 
@@ -309,7 +329,7 @@ contract, option errors, and a strict "no output after stdin close" check.
 already pin the Peru dates. A parent `ctest` also runs the child's seven suites
 (`date`, `easter`, `holiday`, `registry`, `custom_provider`, `pe`,
 `pe_official_calendar`), because the root CMake adds the submodule with tests ON.
-That is why the parent currently reports 35 suites, not 27. The CLI's
+That is why the parent currently reports 37 suites, not 27. The CLI's
 `holidays` verb is covered for parsing and dispatch in `cli/tests/`; the dates
 themselves stay pinned by the child suites and `holidays_test`.
 

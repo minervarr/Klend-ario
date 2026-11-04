@@ -40,6 +40,13 @@ struct Theme {
     Color holidayAccent{240, 180, 90, 255};
     Color buttonFill{42, 42, 54, 255};
     Color emptyHint{128, 128, 140, 255};
+    // The modal: a darker panel over a dimmed week, with fields distinct from
+    // the panel without introducing a second accent colour.
+    Color panel{26, 26, 34, 255};
+    Color panelBorder{72, 72, 90, 255};
+    Color fieldFill{34, 34, 44, 255};
+    Color fieldBorder{64, 64, 78, 255};
+    Color errorText{240, 96, 96, 255};
 };
 
 Theme defaultTheme();
@@ -62,6 +69,16 @@ struct UiMetrics {
     int nowLineThickness = 0;
     int buttonHeight = 0;
     int buttonPad = 0;      // horizontal padding inside a navigation button
+
+    // The edit modal. Separate roles because a form needs a readable label
+    // above every field and a taller hit target than an event label.
+    int editorTitleSize = 0;
+    int editorLabelSize = 0;
+    int editorFieldSize = 0;
+    int editorButtonSize = 0;
+    int editorErrorSize = 0;
+    int editorFieldHeight = 0;
+    int editorRowGap = 0;
 };
 
 // `minTextPx` clamps every text role (not the geometry roles): a label below

@@ -144,18 +144,31 @@ SDK, the Slang compiler and the Wayland/xkb development packages:
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DKLEND_BUILD_GUI=ON
 ninja -C build
 ./build/gui/klend_ario_gui --help
-./build/gui/klend_ario_gui                    # read-only, the state database
+./build/gui/klend_ario_gui                    # the state database, writable
+./build/gui/klend_ario_gui --read-only        # viewer only; the file must exist
 ./build/gui/klend_ario_gui --db /tmp/demo.db  # or a throwaway one
+./build/gui/klend_ario_gui --screenshot-dir /tmp/shots
 ```
 
-Keys: `Left`/`Right` week, `T` today, `H` toggle hidden blocks, `Esc` quit;
-the header's `< today >` buttons do the same with the mouse. The view is
-read-only for now — the CLI and the MCP server write — but it notices their
-writes within a second through `Db::dataVersion()`.
+Keys: `Left`/`Right` week, `T` today, `H` toggle hidden blocks, `N` new,
+`Enter` edit the selected event, `Esc` cancel/close (twice from the week to
+quit), `F12` screenshot. The header's `< today >` buttons do the same with the
+mouse. Click an event once to select it, again (or `Enter`) to open the form;
+the form has title, local start/end, type, importance, urgency, alarm offset,
+hidden and notes. Delete asks for a second confirmation.
+
+The GUI writes through `Db::updateEvent`'s revision compare-and-swap: a save
+made against a row another process changed is refused, not silently applied.
+It still notices CLI/MCP writes within a second through `Db::dataVersion()`.
+
+`F12` writes a PNG of the current window — editor included — to the app's data
+directory (`~/.local/share/klend_ario` by default) or to `--screenshot-dir`
+(which must already exist). It works in Release, not only in the Debug capture
+tool.
 
 Shaders and `fonts/ui/` are copied beside the binary; `FileAssetReader` looks
-there. Headless screenshots (no window, no compositor) come from the capture
-tool:
+there. Headless fixture screenshots (no window, no compositor) still come from
+the separate capture tool; `F12` is the live-window path:
 
 ```bash
 cd build/gui
@@ -209,7 +222,7 @@ core/    all logic — portable, no OS headers, no frontend
 cli/     the MVP frontend; links core
 mcp/     the local MCP server (JSON-RPC over stdio); links core
 alarm/   the alarm engine (libnotify, or a log); links core
-gui/     the weekly view — read-only Phase 4a; vk_canvas + app_shell (editing is 4b)
+gui/     the weekly view + editor — vk_canvas + app_shell; F12 screenshot
 android/ later (Phase 7)
 libs/    firstparty (archive_engine, pe-holiday-calc) + vendored thirdparty (sqlite3mc)
 scripts/ the zipapp build tool

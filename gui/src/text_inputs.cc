@@ -52,6 +52,43 @@ void addCodepoints(std::set<uint32_t> &out, const std::string &text) {
 
 } // namespace
 
+TextInputs collectEditorTextInputs(const std::vector<std::string> &texts,
+                                   const std::vector<int> &sizesPx) {
+    std::set<uint32_t> codepoints;
+    for (uint32_t cp = 0x20; cp <= 0x7E; ++cp) {
+        codepoints.insert(cp);
+    }
+    codepoints.insert(0x00B7);
+    codepoints.insert(0x2026);
+    for (const std::string &text : texts) {
+        addCodepoints(codepoints, text);
+    }
+
+    std::set<int> sizes;
+    for (const int size : sizesPx) {
+        if (size > 0) {
+            sizes.insert(size);
+        }
+    }
+
+    TextInputs out;
+    out.codepoints.assign(codepoints.begin(), codepoints.end());
+    out.sizesPx.assign(sizes.begin(), sizes.end());
+    return out;
+}
+
+TextInputs mergeTextInputs(const TextInputs &first, const TextInputs &second) {
+    std::set<uint32_t> codepoints(first.codepoints.begin(), first.codepoints.end());
+    codepoints.insert(second.codepoints.begin(), second.codepoints.end());
+    std::set<int> sizes(first.sizesPx.begin(), first.sizesPx.end());
+    sizes.insert(second.sizesPx.begin(), second.sizesPx.end());
+
+    TextInputs out;
+    out.codepoints.assign(codepoints.begin(), codepoints.end());
+    out.sizesPx.assign(sizes.begin(), sizes.end());
+    return out;
+}
+
 TextInputs collectTextInputs(const WeekModel &week, const UiMetrics &metrics) {
     std::set<uint32_t> codepoints;
 

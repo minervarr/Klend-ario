@@ -1,5 +1,7 @@
 #include "week_view.hh"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -9,6 +11,8 @@
 
 #include "arc/fs/paths.hh"
 #include "canvas.hh"
+#include "editor_scene.hh"
+#include "editor_store.hh"
 #include "font.hh"
 #include "host.hh"
 #include "keys.hh"
@@ -19,6 +23,7 @@
 #include "refresh.hh"
 #include "renderer.hh"
 #include "scene_render.hh"
+#include "stb_image_write.h"
 #include "text_inputs.hh"
 #include "ui_metrics.hh"
 #include "week_store.hh"
@@ -33,6 +38,65 @@ constexpr long long kWeekSeconds = 7 * 86400;
 // handful the engine itself uses, so the app's own keys live here.
 constexpr int kKeyT = 0x54;
 constexpr int kKeyH = 0x48;
+constexpr int kKeyN = 0x4E;
+constexpr int kKeyF12 = key::F1 + 11;
+
+// The host clipboard behind the text field widget. Core cannot call Wayland;
+// this adapter is the one place the editor touches it.
+class HostClipboard : public widgets::ClipboardIo {
+public:
+    explicit HostClipboard(Host *host) : host_(host) {}
+    void setText(const std::string &utf8) override { host_->setClipboardText(utf8); }
+    std::string getText() override { return host_->getClipboardText(); }
+
+private:
+    Host *host_;
+};
+
+// Every string the modal can draw. Static labels are cheap; the field values
+// are what may add a codepoint the week never used (an accented title, a
+// pasted name). Keeping the list here means a new label cannot be added to the
+// scene and forgotten by the glyph bake.
+std::vector<std::string> editorTextStrings(const EditorState &editor) {
+    std::vector<std::string> texts = {
+        "New event",
+        "Edit event",
+        "Title",
+        "Start (local)",
+        "End (local)",
+        "Type",
+        "Importance",
+        "Urgency",
+        "Alarm offset (s)",
+        "Hidden",
+        "Notes",
+        "Save",
+        "Delete",
+        "Confirm delete",
+        "Cancel",
+        "YYYY-MM-DD HH:MM",
+        "Untitled",
+        "seconds",
+        "optional",
+        "0..100",
+        "event",
+        "sleep",
+        "wake",
+        "alarm",
+        "Delete this event? Click Delete again or press Enter.",
+    };
+    texts.push_back(editor.title);
+    texts.push_back(editor.start);
+    texts.push_back(editor.end);
+    texts.push_back(editor.type);
+    texts.push_back(editor.importance);
+    texts.push_back(editor.urgency);
+    texts.push_back(editor.alarmOffset);
+    texts.push_back(editor.notes);
+    texts.push_back(editor.error);
+    texts.push_back(editor.warning);
+    return texts;
+}
 
 std::string resolvePassphrase(const ViewOptions &options, std::string &error) {
     if (!options.keyFile.empty()) {
@@ -81,6 +145,16 @@ bool WeekView::create(const ViewOptions &options) {
     if (!openDatabase(options)) {
         return false;
     }
+    if (options.screenshotDir.empty()) {
+        // The app's own data directory. Never the user's Pictures: ensureLayout
+        // is scoped to App, and a screenshot is an app artifact, not something
+        // we are entitled to scatter into a user-owned folder.
+        const arc::fs::Layout layout = arc::fs::layout("klend_ario");
+        (void)arc::fs::ensureLayout(layout, arc::fs::LayoutScope::App);
+        screenshotDir_ = layout.data.empty() ? layout.state : layout.data;
+    } else {
+        screenshotDir_ = options.screenshotDir;
+    }
     minTextPx_ = static_cast<int>(std::ceil(kMinReadableTextSizePx));
     if (!loadFont()) {
         // A missing font is not fatal: Canvas falls back to stroke outlines.
@@ -121,9 +195,18 @@ bool WeekView::create(const ViewOptions &options) {
 }
 
 bool WeekView::openDatabase(const ViewOptions &options) {
+    readOnly_ = options.readOnly;
     dbPath_ = options.dbPath;
     if (dbPath_.empty()) {
         const arc::fs::Layout layout = arc::fs::layout("klend_ario");
+        if (!readOnly_) {
+            // The app owns state/cache/config/data; it never creates the user's
+            // Music/Downloads/Pictures/Documents (AGENTS.md §2.3).
+            if (!arc::fs::ensureLayout(layout, arc::fs::LayoutScope::App)) {
+                std::fprintf(stderr, "error: cannot create the app's state directory\n");
+                return false;
+            }
+        }
         dbPath_ = arc::fs::join(layout.state, "klend_ario.db");
     }
 
@@ -134,10 +217,16 @@ bool WeekView::openDatabase(const ViewOptions &options) {
         return false;
     }
 
-    // READ-ONLY, and it must already exist: opening a missing calendar with
-    // create/migrate would turn a wrong path into a silent empty week.
-    auto opened = passphrase.empty() ? klend_ario::Db::openReadOnly(dbPath_)
-                                     : klend_ario::Db::openEncryptedReadOnly(dbPath_, passphrase);
+    // Writable by default: the weekly view is the editor now. `--read-only`
+    // keeps the old viewer contract, where a missing path must not become a
+    // silent empty week. The writable path may create and migrate — that is
+    // what makes the first run work without a CLI.
+    auto opened =
+        readOnly_
+            ? (passphrase.empty() ? klend_ario::Db::openReadOnly(dbPath_)
+                                  : klend_ario::Db::openEncryptedReadOnly(dbPath_, passphrase))
+            : (passphrase.empty() ? klend_ario::Db::open(dbPath_)
+                                  : klend_ario::Db::openEncrypted(dbPath_, passphrase));
     if (!opened) {
         std::fprintf(stderr, "error: %s\n", opened.error().message.c_str());
         std::fprintf(stderr, "       database: %s\n", dbPath_.c_str());
@@ -145,7 +234,11 @@ bool WeekView::openDatabase(const ViewOptions &options) {
             std::fprintf(stderr, "       (if it is encrypted, pass --key-file <path> or set "
                                  "$KLEND_ARIO_KEY)\n");
         }
-        std::fprintf(stderr, "       create a calendar with: klend_ario_cli add --title ...\n");
+        if (readOnly_) {
+            std::fprintf(stderr,
+                         "       --read-only needs an existing calendar; run without it to "
+                         "create one\n");
+        }
         return false;
     }
     db_ = opened.take();
@@ -205,7 +298,14 @@ void WeekView::ensureText() {
     const int width = static_cast<int>(textWidth_);
     const int height = static_cast<int>(textHeight_);
     const UiMetrics metrics = metricsFor(frameFor(width, height).content, minTextPx_);
-    const TextInputs inputs = collectTextInputs(week_, metrics);
+    TextInputs inputs = collectTextInputs(week_, metrics);
+    if (editor_.open) {
+        const std::vector<int> editorSizes = {
+            metrics.editorTitleSize, metrics.editorLabelSize, metrics.editorFieldSize,
+            metrics.editorButtonSize, metrics.editorErrorSize};
+        inputs = mergeTextInputs(
+            inputs, collectEditorTextInputs(editorTextStrings(editor_), editorSizes));
+    }
     if (inputs.codepoints.empty() || inputs.sizesPx.empty()) {
         return;
     }
@@ -263,11 +363,22 @@ void WeekView::goToWeek(long long anchorUtc) {
 
 void WeekView::run() {
     while (running_) {
+        // Edges are per frame: clear before pump, then consume what arrived.
+        // This is the contract FrameInput documents; clearing after pump would
+        // silently drop the events the frame was about to handle.
+        input_.beginFrame();
+        const bool editorWasOpen = editor_.open;
         const bool haveWork = renderer_ != nullptr && pendingFrames_ > 0;
         host_->pump(haveWork);
         if (host_->quitRequested()) {
             running_ = false;
             break;
+        }
+        // Do not consume the key that OPENED the modal in the same frame:
+        // Enter is both "edit this event" and "save", and applying it twice
+        // would open and immediately save an empty form.
+        if (editor_.open && editorWasOpen) {
+            applyEditorInput();
         }
         if (renderer_ == nullptr || pendingFrames_ <= 0) {
             continue;
@@ -319,6 +430,20 @@ void WeekView::drawFrame() {
     textQuads_.clear();
     scene_ = buildWeekScene(static_cast<int>(width), static_cast<int>(height), week_, nowUtc_,
                             metrics, theme_, minTextPx_, selectedEventId_);
+    if (editor_.open) {
+        // The renderer batches every text op after every shape, so the week's
+        // day headers would paint OVER the modal's panel fill even though they
+        // were issued first. Drop the week's text; its event rectangles still
+        // give date context, and the modal owns the text layer for this frame.
+        scene_.ops.erase(
+            std::remove_if(scene_.ops.begin(), scene_.ops.end(),
+                           [](const Op &op) { return op.kind == OpKind::Text; }),
+            scene_.ops.end());
+        Scene modal = buildEditorScene(static_cast<int>(width), static_cast<int>(height),
+                                       editor_, metrics, theme_, minTextPx_);
+        scene_.ops.insert(scene_.ops.end(), modal.ops.begin(), modal.ops.end());
+        scene_.hits.insert(scene_.hits.end(), modal.hits.begin(), modal.hits.end());
+    }
     // The now-line position this scene was built for. onTimer() compares
     // against it instead of repainting every second.
     drawnNowUtc_ = nowUtc_;
@@ -332,7 +457,24 @@ void WeekView::drawFrame() {
     // Text quads are the FIFTH argument; shapes are the sixth. Passing them in
     // the shape slot gives a blank text layer and a shape pipeline that reads
     // glyph vertices as rectangles.
+    const bool screenshotFrame = screenshotRequested_;
+    if (screenshotFrame) {
+        // Do not present this frame: presenting goes through the compositor and
+        // can recycle the image before readback. The capture path is the same
+        // one the headless tool uses, where present is disabled for exactly
+        // this reason. The next frame presents normally.
+        renderer_->setPresentEnabled(false);
+    }
     renderer_->draw(curves_, /*overlay_rotation_deg=*/0, {}, {}, textQuads_, shapes_);
+
+    if (screenshotFrame) {
+        screenshotRequested_ = false;
+        captureScreenshot();
+        renderer_->setPresentEnabled(true);
+        // drawFrame() set pendingFrames_ would be cleared by run(); use the
+        // existing "one more pass" flag so the captured frame is shown.
+        redrawAgain_ = true;
+    }
 
     // draw() is where a resized surface recreates its swapchain, which changes
     // the renderer's extent AFTER this scene was measured at the old one. The
@@ -366,6 +508,20 @@ void WeekView::onHostLayoutInvalidated() {
 void WeekView::onHostExposed() { pendingFrames_ = 1; }
 
 void WeekView::onKeyDownPortable(int keyCode) {
+    input_.onKey(KeyEvent{keyCode, /*down=*/true});
+    if (keyCode == kKeyF12) {
+        // The window's own capture, not the dev fixture tool. It works in the
+        // Release binary and includes whatever is on screen (the editor too).
+        screenshotRequested_ = true;
+        pendingFrames_ = 1;
+        return;
+    }
+    if (editor_.open) {
+        // The modal consumes keys after pump(), where textFieldHandleInput can
+        // see the same edge. Handling Escape/Enter here as well would apply
+        // them twice.
+        return;
+    }
     switch (keyCode) {
     case key::Escape:
         // First Escape drops the selection; a second one quits. That keeps the
@@ -385,6 +541,11 @@ void WeekView::onKeyDownPortable(int keyCode) {
         followingNow_ = false;
         goToWeek(anchorUtc_ + kWeekSeconds);
         break;
+    case key::Enter:
+        if (selectedEventId_ != 0) {
+            beginEditSelected();
+        }
+        break;
     case kKeyT: {
         const long long now = klend_ario::utcNowSeconds();
         nowUtc_ = now;
@@ -396,31 +557,67 @@ void WeekView::onKeyDownPortable(int keyCode) {
         showHidden_ = !showHidden_;
         reload();
         break;
+    case kKeyN:
+        beginNewAt(nowUtc_);
+        break;
     default:
         break;
     }
 }
 
+void WeekView::onKeyUpPortable(int keyCode) {
+    input_.onKey(KeyEvent{keyCode, /*down=*/false});
+}
+
+void WeekView::onCharPortable(uint32_t codepoint) {
+    input_.onChar(CharEvent{codepoint});
+}
+
+void WeekView::onTextEditPortable(const std::string &text, size_t cursorByte) {
+    input_.onTextEdit(TextEditEvent{text, cursorByte});
+}
+
 void WeekView::onLButtonDown(int x, int y) {
-    for (const HitTarget &hit : scene_.hits) {
-        if (hit.rect.contains(x, y)) {
-            if (hit.id == "prev") {
-                followingNow_ = false;
-                goToWeek(anchorUtc_ - kWeekSeconds);
-            } else if (hit.id == "next") {
-                followingNow_ = false;
-                goToWeek(anchorUtc_ + kWeekSeconds);
-            } else if (hit.id == "today") {
-                const long long now = klend_ario::utcNowSeconds();
-                nowUtc_ = now;
-                followingNow_ = true;
-                goToWeek(now);
-            } else if (hit.id.rfind("event:", 0) == 0) {
-                selectedEventId_ = std::strtoll(hit.id.c_str() + 6, nullptr, 10);
+    // Reverse order: the modal is appended after the week, so it is on top.
+    // Walking forwards would let a day column steal a click from a field that
+    // visually covers it.
+    for (auto it = scene_.hits.rbegin(); it != scene_.hits.rend(); ++it) {
+        const HitTarget &hit = *it;
+        if (!hit.rect.contains(x, y)) {
+            continue;
+        }
+        if (editor_.open) {
+            if (handleEditorHit(hit)) {
                 pendingFrames_ = 1;
             }
             return;
         }
+        if (hit.id == "prev") {
+            followingNow_ = false;
+            goToWeek(anchorUtc_ - kWeekSeconds);
+        } else if (hit.id == "next") {
+            followingNow_ = false;
+            goToWeek(anchorUtc_ + kWeekSeconds);
+        } else if (hit.id == "today") {
+            const long long now = klend_ario::utcNowSeconds();
+            nowUtc_ = now;
+            followingNow_ = true;
+            goToWeek(now);
+        } else if (hit.id.rfind("event:", 0) == 0) {
+            const long long id = std::strtoll(hit.id.c_str() + 6, nullptr, 10);
+            if (selectedEventId_ == id) {
+                // Second click on the same box: open the form. This is the
+                // double-click gesture without a separate event type.
+                beginEditSelected();
+            } else {
+                selectedEventId_ = id;
+                pendingFrames_ = 1;
+            }
+        }
+        return;
+    }
+    if (editor_.open) {
+        return; // a click outside the panel must not dismiss unsaved work
     }
     // A click on empty chrome clears the selection. Creating an event from a
     // click is the next slice; clearing is already the right "deselect" verb.
@@ -428,6 +625,265 @@ void WeekView::onLButtonDown(int x, int y) {
         selectedEventId_ = 0;
         pendingFrames_ = 1;
     }
+}
+
+std::string *WeekView::focusedText() {
+    switch (editor_.focus) {
+    case EditorField::Title:
+        return &editor_.title;
+    case EditorField::Start:
+        return &editor_.start;
+    case EditorField::End:
+        return &editor_.end;
+    case EditorField::Type:
+        return &editor_.type;
+    case EditorField::Importance:
+        return &editor_.importance;
+    case EditorField::Urgency:
+        return &editor_.urgency;
+    case EditorField::AlarmOffset:
+        return &editor_.alarmOffset;
+    case EditorField::Notes:
+        return &editor_.notes;
+    case EditorField::Hidden:
+    case EditorField::Save:
+    case EditorField::Delete:
+    case EditorField::Cancel:
+    case EditorField::Count:
+        return nullptr;
+    }
+    return nullptr;
+}
+
+void WeekView::syncTextField() {
+    if (!editorFieldIsText(editor_.focus)) {
+        textFieldOwner_ = editor_.focus;
+        return;
+    }
+    if (textFieldOwner_ == editor_.focus) {
+        return;
+    }
+    textFieldOwner_ = editor_.focus;
+    const std::string *value = focusedText();
+    textField_.text = value != nullptr ? *value : std::string{};
+    textField_.cursorByte = textField_.text.size();
+    textField_.selectionAnchor = textField_.cursorByte;
+}
+
+void WeekView::setEditorFocus(EditorField field) {
+    if (editor_.focus == field) {
+        return;
+    }
+    editor_.focus = field;
+    syncTextField();
+    pendingFrames_ = 1;
+}
+
+void WeekView::beginEditSelected() {
+    if (editor_.open || readOnly_ || selectedEventId_ == 0) {
+        return;
+    }
+    for (const Event &event : week_.events) {
+        if (event.id != selectedEventId_) {
+            continue;
+        }
+        editor_ = editorForEvent(event);
+        textFieldOwner_ = EditorField::Count;
+        syncTextField();
+        textDirty_ = true;
+        pendingFrames_ = 1;
+        return;
+    }
+}
+
+void WeekView::beginNewAt(long long startUtc) {
+    if (editor_.open || readOnly_) {
+        return;
+    }
+    editor_ = editorForNew(startUtc);
+    selectedEventId_ = 0;
+    textFieldOwner_ = EditorField::Count;
+    syncTextField();
+    textDirty_ = true;
+    pendingFrames_ = 1;
+}
+
+void WeekView::closeEditor() {
+    editor_ = EditorState{};
+    textFieldOwner_ = EditorField::Count;
+    textField_ = widgets::TextFieldState{};
+    textDirty_ = true;
+    pendingFrames_ = 1;
+}
+
+bool WeekView::handleEditorHit(const HitTarget &hit) {
+    if (hit.id == "editor:save") {
+        saveEditor();
+        return true;
+    }
+    if (hit.id == "editor:delete") {
+        deleteEditor();
+        return true;
+    }
+    if (hit.id == "editor:cancel") {
+        closeEditor();
+        return true;
+    }
+    if (hit.id.rfind("field:", 0) != 0) {
+        return false;
+    }
+    EditorField field = EditorField::Title;
+    if (!editorFieldFromName(hit.id.substr(6), field)) {
+        return false;
+    }
+    if (field == EditorField::Hidden) {
+        editor_.hidden = !editor_.hidden;
+        editor_.acceptAmbiguous = false;
+    }
+    setEditorFocus(field);
+    return true;
+}
+
+void WeekView::applyEditorInput() {
+    if (!editor_.open) {
+        return;
+    }
+    syncTextField();
+
+    if (editorFieldIsText(editor_.focus)) {
+        HostClipboard clipboard(host_.get());
+        if (widgets::textFieldHandleInput(textField_, input_, &clipboard)) {
+            std::string *value = focusedText();
+            if (value != nullptr) {
+                *value = textField_.text;
+            }
+            editor_.error.clear();
+            editor_.warning.clear();
+            editor_.acceptAmbiguous = false;
+            textDirty_ = true; // a pasted/typed codepoint may be new to the atlas
+            pendingFrames_ = 1;
+        }
+    }
+
+    if (input_.keyWentDown(key::Escape)) {
+        if (editor_.confirmDelete) {
+            editor_.confirmDelete = false;
+            pendingFrames_ = 1;
+        } else {
+            closeEditor();
+        }
+        return;
+    }
+    if (input_.keyWentDown(key::Tab)) {
+        setEditorFocus(editorFieldNext(editor_.focus, input_.shiftDown));
+        return;
+    }
+    if (input_.keyWentDown(key::Enter)) {
+        if (editor_.focus == EditorField::Delete) {
+            deleteEditor();
+        } else if (editor_.focus == EditorField::Cancel) {
+            closeEditor();
+        } else {
+            saveEditor();
+        }
+        return;
+    }
+    if (editor_.focus == EditorField::Hidden && input_.keyWentDown(key::Space)) {
+        editor_.hidden = !editor_.hidden;
+        editor_.acceptAmbiguous = false;
+        pendingFrames_ = 1;
+    }
+}
+
+void WeekView::saveEditor() {
+    if (!editor_.open) {
+        return;
+    }
+    std::string warning;
+    auto built = buildEventFromEditor(editor_, warning);
+    if (!built) {
+        editor_.error = built.error().message;
+        editor_.warning.clear();
+        pendingFrames_ = 1;
+        return;
+    }
+    if (!warning.empty() && !editor_.acceptAmbiguous) {
+        // A fall-back wall clock has two instants. Show which one was chosen
+        // and require a second Save; editing again resets the acknowledgement.
+        editor_.warning = warning + "; press Save again to accept";
+        editor_.error.clear();
+        editor_.acceptAmbiguous = true;
+        pendingFrames_ = 1;
+        return;
+    }
+
+    std::string storedWarning;
+    auto saved = saveEditorToDb(db_, editor_, storedWarning);
+    if (!saved) {
+        editor_.error = saved.error().message;
+        pendingFrames_ = 1;
+        return;
+    }
+    selectedEventId_ = saved.value();
+    closeEditor();
+    reload();
+}
+
+void WeekView::deleteEditor() {
+    if (!editor_.open || editor_.isNew) {
+        return;
+    }
+    if (!editor_.confirmDelete) {
+        editor_.confirmDelete = true;
+        editor_.error.clear();
+        pendingFrames_ = 1;
+        return;
+    }
+    auto removed = deleteEditorFromDb(db_, editor_);
+    if (!removed) {
+        editor_.error = removed.error().message;
+        pendingFrames_ = 1;
+        return;
+    }
+    closeEditor();
+    selectedEventId_ = 0;
+    reload();
+}
+
+void WeekView::captureScreenshot() {
+    if (renderer_ == nullptr) {
+        return;
+    }
+    std::vector<uint8_t> rgba;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!renderer_->readbackLastFrame(rgba, width, height)) {
+        std::fprintf(stderr, "error: screenshot readback failed\n");
+        return;
+    }
+
+    // UTC filename, because the calendar stores UTC and a screenshot of a
+    // week is evidence about the same instants. `formatIso8601` gives
+    // 2026-11-04T23:15:00Z; keep the digits only.
+    const std::string iso = klend_ario::formatIso8601(klend_ario::utcNowSeconds());
+    std::string stamp;
+    for (const char ch : iso) {
+        if (std::isdigit(static_cast<unsigned char>(ch)) != 0) {
+            stamp.push_back(ch);
+        }
+    }
+    if (stamp.size() >= 14) {
+        stamp = stamp.substr(0, 8) + "-" + stamp.substr(8, 6);
+    }
+    const std::string name = "klend_ario-" + stamp + ".png";
+    const std::string path = arc::fs::join(screenshotDir_, name);
+
+    if (stbi_write_png(path.c_str(), static_cast<int>(width), static_cast<int>(height), 4,
+                       rgba.data(), static_cast<int>(width * 4)) == 0) {
+        std::fprintf(stderr, "error: cannot write screenshot: %s\n", path.c_str());
+        return;
+    }
+    std::fprintf(stderr, "screenshot: %s (%ux%u)\n", path.c_str(), width, height);
 }
 
 void WeekView::setCursorFor(int x, int y) {
@@ -470,6 +926,13 @@ void WeekView::onTimer(int timerId) {
     if (auto version = db_.dataVersion(); version.ok()) {
         observedVersion = version.value();
         dataChanged = observedVersion != dataVersion_;
+    }
+
+    if (editor_.open && dataChanged && editor_.warning.empty()) {
+        // The draft is not clobbered; the revision token will decide at Save.
+        // Say so now instead of failing with an unexplained stale-save error.
+        editor_.warning = "calendar changed externally; Save will be checked";
+        pendingFrames_ = 1;
     }
 
     RefreshInputs in;

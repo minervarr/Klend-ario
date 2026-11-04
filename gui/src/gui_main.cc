@@ -1,8 +1,8 @@
 // klend_ario_gui — the weekly view.
 //
 // app_shell owns main() on Wayland; this file defines what runs once the
-// platform bootstrap is done. The command line is small on purpose: this slice
-// is a viewer, so it has nothing to say beyond which database and which key.
+// platform bootstrap is done. The command line stays small: which database,
+// which key, and whether this deployment is allowed to write at all.
 
 #include <cstdio>
 #include <cstring>
@@ -16,15 +16,18 @@ void printUsage() {
     std::fputs(
         "usage: klend_ario_gui [--db <path>] [--key-file <path>] [--hidden] [--fullscreen]\n"
         "\n"
-        "The weekly view. Read-only for now; edit with klend_ario_cli or the MCP server.\n"
+        "The weekly view and editor.\n"
         "\n"
         "  --db <path>       database file (default: the app's state database)\n"
         "  --key-file <path> first line is the passphrase (or set $KLEND_ARIO_KEY)\n"
         "  --hidden          show hidden blocks (sleep) instead of hiding them\n"
+        "  --read-only       viewer only: no editing, and the file must exist\n"
+        "  --screenshot-dir  where F12 writes PNGs (default: the app's data dir)\n"
         "  --fullscreen      fill the monitor instead of a 1280x720 window\n"
         "  --help            this text\n"
         "\n"
-        "keys: Left/Right previous/next week · T today · H toggle hidden · Esc quit\n",
+        "keys: Left/Right week · T today · H hidden · N new · Enter edit · Esc close/quit\n"
+        "      F12 screenshot\n",
         stderr);
 }
 
@@ -42,19 +45,26 @@ int app_shell_main(int argc, char **argv) {
             options.showHidden = true;
             continue;
         }
+        if (std::strcmp(arg, "--read-only") == 0) {
+            options.readOnly = true;
+            continue;
+        }
         if (std::strcmp(arg, "--fullscreen") == 0) {
             options.fullscreen = true;
             continue;
         }
-        if (std::strcmp(arg, "--db") == 0 || std::strcmp(arg, "--key-file") == 0) {
+        if (std::strcmp(arg, "--db") == 0 || std::strcmp(arg, "--key-file") == 0 ||
+            std::strcmp(arg, "--screenshot-dir") == 0) {
             if (i + 1 >= argc) {
                 std::fprintf(stderr, "error: %s needs a value\n", arg);
                 return 2;
             }
             if (std::strcmp(arg, "--db") == 0) {
                 options.dbPath = argv[++i];
-            } else {
+            } else if (std::strcmp(arg, "--key-file") == 0) {
                 options.keyFile = argv[++i];
+            } else {
+                options.screenshotDir = argv[++i];
             }
             continue;
         }

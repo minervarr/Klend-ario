@@ -73,6 +73,16 @@ struct Scene {
     std::vector<HitTarget> hits;
 };
 
+// Small constructors shared by the weekly view and the edit modal. They live
+// here (rather than in each scene builder) so an Op can never be half-filled
+// differently in two places.
+Op fillOp(const Rect &rect, Color color, int radius = 0);
+Op strokeOp(const Rect &rect, Color color, int thickness, int radius = 0);
+Op textOp(const Rect &rect, std::string text, int size, Color color,
+          Align align = Align::Left);
+std::string fitText(std::string_view text, int size, int maxWidth,
+                    const TextMetrics &measure);
+
 // `week` is drawn as seven local days; `nowUtc` is passed in, never read from
 // the clock, so the now-line and "today" are assertable. `minTextPx` is the
 // font's generated legibility floor; the window passes it, the pure tests keep

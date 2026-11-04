@@ -40,6 +40,14 @@ UiMetrics metricsFor(const Rect &content, int minTextPx) {
     m.nowLineThickness = scaled(h, 0.0025, 1);
     m.buttonHeight = std::max(m.navLabelSize + 2 * m.labelPad + 6, 18);
     m.buttonPad = std::max(m.labelPad * 3, 6);
+
+    m.editorTitleSize = textScaled(h, 0.040, 16, minTextPx);
+    m.editorLabelSize = textScaled(h, 0.022, 10, minTextPx);
+    m.editorFieldSize = textScaled(h, 0.026, 12, minTextPx);
+    m.editorButtonSize = textScaled(h, 0.024, 11, minTextPx);
+    m.editorErrorSize = textScaled(h, 0.020, 9, minTextPx);
+    m.editorFieldHeight = std::max(m.editorFieldSize + 2 * m.labelPad + 8, 22);
+    m.editorRowGap = std::max(m.labelPad * 2, 6);
     return m;
 }
 

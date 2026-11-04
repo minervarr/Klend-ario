@@ -116,15 +116,17 @@ These were decided for this repository specifically, on top of `merged.md`:
 | Build system | **CMake + Ninja only** |
 | Build tool & GUI | `scripts/klend_ario_builder.pyz` probes for `slangc`/`$VULKAN_SDK` and the Wayland/xkb `pkg-config` modules, then passes `-DKLEND_BUILD_GUI=ON`; `--gui`/`--no-gui` override, the menu asks. The CMake option defaults to OFF so a machine without the SDK still configures |
 | GUI build | `-DKLEND_BUILD_GUI=ON` (default OFF): the window + capture tool need the Vulkan SDK, `slangc` and Wayland/xkb. `klend_ario_view` and its pure suites always build |
-| GUI mode | **Read-only** (Phase 4a): `Db::openReadOnly`/`openEncryptedReadOnly`, CLI/MCP are the write paths. `--hidden` switches the query to `Visibility::Any` |
+| GUI mode | **Writable by default** (Phase 4b): `Db::open`/`openEncrypted`; `--read-only` keeps `openReadOnly`/`openEncryptedReadOnly` and requires an existing file. `--hidden` switches the query to `Visibility::Any` |
+| GUI editing | Modal form (`gui/src/editor` → `editor_scene` → `editor_store`): title, local start/end, type, importance, urgency, alarm offset, hidden and single-line notes. Delete asks twice. Saves carry `Event.revision` and a stale draft is refused |
+| GUI screenshot | `F12` renders with present disabled, reads the frame back (`Renderer::readbackLastFrame`), writes PNG to `--screenshot-dir` or the app's data directory, then re-enables present and redraws. Works in Release; includes the modal |
 | GUI refresh | One `EventQuery` per visible week; a 1 s poll of `Db::dataVersion()` reloads when ANOTHER connection commits (that is how an MCP edit appears live). The now-line redraws on a timer |
 | GUI local days | `gui/src/local_time` is the ONLY place a timezone is read; it returns local civil days with `[startUtc, endUtc)` bounds (23/25 h on DST days). Layout/scene take instants and never call the OS |
 | GUI rendering | Three layers: pure geometry → pure `Scene` (draw ops) → a thin `vk_canvas` mapping. Colours are core (`rgbForStyle`, `textColorOn`); chrome lives in `gui/theme` |
 | GUI text | **`RasterFont`** (per-size FreeType coverage atlas) through `Canvas::useMsdf` + `Renderer::initMsdf`; quads are `draw()`'s fifth argument. The legacy outline path is a missing-font fallback only — its winding fill is `SS=1` (1-bit). Not MTSDF: the sizes are fixed integers. See `GUI.md` §5 |
 | GUI week label | "Week N · Mon YYYY" from `weekOfYearFromCivilDate`; a week containing 1 January is week **1 of the new year** even though it starts in December |
 | GUI short events | Height stays proportional; labels are tiered by height (time, then title, then nothing). A five-minute event is a thin coloured line at its true start |
-| GUI screenshots | `klend_ario_capture` renders fixture weeks through `VK_EXT_headless_surface` to PNG (Debug-only, `TZ=UTC0`), so the view is reviewable with no display |
-| Frontends | `cli/` now, `gui/` later; Android later (deferred) |
+| GUI fixture captures | `klend_ario_capture` renders fixture weeks/editor through `VK_EXT_headless_surface` to PNG (Debug-only, `TZ=UTC0`), so the view is reviewable with no display. The live-window path is `F12` |
+| Frontends | `cli/`, `gui/`, `mcp/`, `alarm/`; Android later (deferred) |
 | Scope | **Desktop-first**: Linux is the active platform; Android is deferred (Phase 7) |
 | Time base | Unix seconds **UTC**; a day is the half-open interval `[0, 86400)` |
 | Local time | A **display** concern only; other zones may be shown, always alongside UTC. No per-event offset yet |
@@ -143,7 +145,8 @@ These were decided for this repository specifically, on top of `merged.md`:
 - **Local wall-clock input is resolved, not parsed.** `localTimeToUtc` returns
   the instant plus an `ambiguous`/`nonexistent` flag. A spring-forward time is
   refused; a fall-back time chooses the earlier occurrence and says so. The
-  editor always shows UTC alongside the local value.
+  form currently shows local time only; UTC alongside it is the remaining R8
+  item (`ROADMAP.md` §8.1).
 - **Saves are compare-and-swap.** `Event.revision` is the token read with the
   row; `Db::updateEvent` refuses a stale one. A second-resolution
   `updated_utc` alone cannot tell two edits in the same second apart.
@@ -353,6 +356,20 @@ These are truths this workspace already paid for. Do not relearn them.
   `vk_canvas` adapter is a switch. That is the only way the view could be
   trusted on a machine where it could not be drawn, and it kept the untestable
   half small enough to read.
+- **Text is a second renderer layer, not an orderly Op.** vk_canvas batches
+  every text op after every shape, so a panel fill issued later still loses to
+  week text issued earlier. The modal must remove the week's text ops; drawing
+  a dim/panel fill is not enough. This looked like a transparency bug and was
+  actually renderer ordering.
+- **A screenshot must not present before it reads.** `readbackLastFrame` on a
+  presented swapchain image can copy recycled memory. `F12` disables present
+  for the capture frame, reads back, then re-enables present and arms one
+  redraw. The headless capture tool already used this shape; the live window
+  now does too.
+- **A local date-time input is not a parse.** A wall clock can be missing
+  (spring forward) or repeated (fall back). `localTimeToUtc` reports both; an
+  unchanged ambiguous field keeps the instant it was opened with, or editing a
+  title would move the event an hour.
 - **A local day is not 86,400 seconds.** The model is UTC, but the view's columns
   are local days; a spring-forward day is 23 hours and a fall-back one is 25.
   Passing `dayStart` alone and assuming a day length put every event after the

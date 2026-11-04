@@ -26,8 +26,9 @@ resources":
 
 The target is: **no work when nothing visible changed**, a windowed surface on
 compositors that honour one, and no chance of the UI silently running on a CPU
-Vulkan device. The product behaviour (1 s data polling, read-only until 4b) does
-not change.
+Vulkan device. The product behaviour (1 s data polling) does not change. The
+measurements below were taken while the view was still read-only (pre-4b); the
+edit path landed later and must be measured separately.
 
 ## 2. Baseline (measured 2026-10-20)
 

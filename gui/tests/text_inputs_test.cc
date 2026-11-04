@@ -59,6 +59,24 @@ int main() {
     // Printable ASCII only: a title can never drag control bytes into the bake.
     assert(!has(inputs.codepoints, 0x000A));
 
+    // The modal adds field values at its own sizes; non-ASCII text is collected
+    // there too, and merging keeps both sorted and unique.
+    const TextInputs editor =
+        collectEditorTextInputs({"D\xC3\xAD" "a", "09:00", "Deep work"}, {16, 20});
+    assert(std::is_sorted(editor.codepoints.begin(), editor.codepoints.end()));
+    assert(std::adjacent_find(editor.codepoints.begin(), editor.codepoints.end()) ==
+           editor.codepoints.end());
+    assert((editor.sizesPx == std::vector<int>{16, 20}));
+    assert(has(editor.codepoints, 0x00ED)); // í
+    assert(has(editor.codepoints, ':'));
+
+    const TextInputs merged = mergeTextInputs(inputs, editor);
+    assert(std::is_sorted(merged.codepoints.begin(), merged.codepoints.end()));
+    assert(std::adjacent_find(merged.codepoints.begin(), merged.codepoints.end()) ==
+           merged.codepoints.end());
+    assert(std::is_sorted(merged.sizesPx.begin(), merged.sizesPx.end()));
+    assert((merged.sizesPx == std::vector<int>{16, 19, 20, 22, 27}));
+
     std::printf("text_inputs_test: all assertions passed\n");
     return 0;
 }
